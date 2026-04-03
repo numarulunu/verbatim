@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"backend/.venv/Scripts/python.exe\" test_paths.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from api_server import app; print(''API server imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m pip install flask flask-cors --quiet)",
+      "Bash(cmd /c:*)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from api_server import app; print(''✓ API server imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from api_server import app, ProgressProcessor; from process_v2 import MaterialProcessor; print(''All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from core.whisper_pool import WhisperModelPool, get_whisper_pool; print(''Whisper pool imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" test_whisper_pool.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" test_worker_calc.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from core.whisper_pool import WhisperModelPool, get_whisper_pool; from process_v2 import MaterialProcessor; from api_server import app; print(''All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/process_v2.py backend/core/progress_bar.py backend/api_server.py)",
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; from api_server import app; print(''✓ All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; from api_server import app; print(''All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/core/whisper_pool.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from core.whisper_pool import WhisperModelPool; print(''Import successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''Final verification passed'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/core/progress_bar.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/process_v2.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''Verified'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/core/progress_bar.py backend/process_v2.py)",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''Verified successfully'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''Fixed'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"\nimport sys\nsys.path.insert(0, ''backend'')\nfrom process_v2 import MaterialProcessor\nfrom core.config_loader import load_config\n\n# Quick test\nconfig = load_config(''.pipeline_settings.json'')\nprocessor = MaterialProcessor(config)\nprint(''All imports and initialization successful'')\n\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -c \"import sys; sys.path.insert(0, ''backend''); from process_v2 import MaterialProcessor; print(''✓ All imports successful'')\")",
+      "Bash(\"backend/.venv/Scripts/python.exe\" -m py_compile backend/core/whisper_pool.py backend/process_v2.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

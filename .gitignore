@@ -1,0 +1,15 @@
+audio_cache/
+Transcriptions/
+Material/
+.venv/
+__pycache__/
+*.pyc
+
+# Binary artifacts
+*.mp4
+*.m4a
+*.mp3
+*.dll
+*.lib
+*.pyd
+*.exe

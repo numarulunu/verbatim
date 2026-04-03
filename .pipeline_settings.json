@@ -1,0 +1,19 @@
+{
+  "source_directory": "Material",
+  "output_directory": "Transcriptions",
+  "whisper_model": "medium",
+  "whisper_language": "",
+  "whisper_beam_size": 1,
+  "whisper_diarize": true,
+  "whisper_diarize_speakers": 2,
+  "process_audio": true,
+  "process_videos": true,
+  "process_pdf": true,
+  "process_images": true,
+  "process_docx": true,
+  "process_xlsx": true,
+  "process_pptx": true,
+  "process_txt": true,
+  "process_csv": true,
+  "process_rtf": true
+}
