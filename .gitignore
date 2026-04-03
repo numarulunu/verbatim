@@ -4,6 +4,12 @@ Material/
 .venv/
 __pycache__/
 *.pyc
+venv/
+.env
+*.log
+dist/
+build/
+*.egg-info/
 
 # Binary artifacts
 *.mp4
@@ -13,3 +19,8 @@ __pycache__/
 *.lib
 *.pyd
 *.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
