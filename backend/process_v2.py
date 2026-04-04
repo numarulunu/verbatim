@@ -401,6 +401,24 @@ class MaterialProcessor:
             logger.error("Error saving %s: %s", source_path.name, e)
             quiet_print(f"Error saving {source_path.name}: {e}", error=True)
 
+    def _dispatch_file(self, file_path: Path, file_type: str, output_dir: Path):
+        """Dispatch a single file to the appropriate processor.
+        Returns (whisper_result_dict, None) for audio/video,
+                (None, extracted_text) for other types,
+                (None, None) on failure.
+        """
+        if file_type == 'audio':
+            return (self.process_audio(file_path, output_dir), None)
+        elif file_type == 'video':
+            return (self.process_video(file_path, output_dir), None)
+        elif file_type == 'pdf':
+            return (None, self.process_pdf(file_path, output_dir))
+        elif file_type == 'image':
+            return (None, self.process_image(file_path, output_dir))
+        elif file_type == 'document':
+            return (None, self.process_document(file_path, output_dir))
+        return (None, None)
+
     def _process_file_wrapper(self, file_path: Path, file_type: str, output_dir: Path):
         """Wrapper for processing a single file (for parallel execution).
         Audio/video: whisper only (saves plain text), queues diarization for phase 2.
@@ -414,35 +432,14 @@ class MaterialProcessor:
             self.processed_files.add(file_key)
 
         try:
-            result = None
-            if file_type == 'audio':
-                result = self.process_audio(file_path, output_dir)
-            elif file_type == 'video':
-                result = self.process_video(file_path, output_dir)
-            elif file_type == 'pdf':
-                text = self.process_pdf(file_path, output_dir)
-                if text:
-                    self.save_text(file_path, text, output_dir)
-                    if self.progress_bar:
-                        self.progress_bar.update(1)
-                    return (True, file_path)
-                result = None  # fall through to retry
-            elif file_type == 'image':
-                text = self.process_image(file_path, output_dir)
-                if text:
-                    self.save_text(file_path, text, output_dir)
-                    if self.progress_bar:
-                        self.progress_bar.update(1)
-                    return (True, file_path)
-                result = None
-            elif file_type == 'document':
-                text = self.process_document(file_path, output_dir)
-                if text:
-                    self.save_text(file_path, text, output_dir)
-                    if self.progress_bar:
-                        self.progress_bar.update(1)
-                    return (True, file_path)
-                result = None
+            result, text = self._dispatch_file(file_path, file_type, output_dir)
+
+            # CPU types (pdf, image, document): save text directly
+            if text:
+                self.save_text(file_path, text, output_dir)
+                if self.progress_bar:
+                    self.progress_bar.update(1)
+                return (True, file_path)
 
             # Audio/video: save plain text now, queue diarization in background
             if result and isinstance(result, dict):
@@ -694,30 +691,17 @@ class MaterialProcessor:
             for fp, ft in retry_list:
                 time.sleep(1)  # Brief pause between retries
                 try:
-                    result = None
-                    if ft in ('audio', 'video'):
-                        if ft == 'audio':
-                            result = self.process_audio(fp, output_dir)
-                        else:
-                            result = self.process_video(fp, output_dir)
-                        if result and isinstance(result, dict):
-                            txt = format_timestamped_transcript(result.get('segments', [])) or result['text'].strip()
-                            self.save_text(fp, txt, output_dir)
-                            # Queue for background diarization
-                            if self._diarize_queue is not None:
-                                output_path = self._get_output_path(fp, output_dir)
-                                self._diarize_queue.put((fp, result, output_path))
-                                self._diarize_total += 1
-                    else:
-                        text = None
-                        if ft == 'pdf':
-                            text = self.process_pdf(fp, output_dir)
-                        elif ft == 'image':
-                            text = self.process_image(fp, output_dir)
-                        elif ft == 'document':
-                            text = self.process_document(fp, output_dir)
-                        if text:
-                            self.save_text(fp, text, output_dir)
+                    result, text = self._dispatch_file(fp, ft, output_dir)
+                    if text:
+                        self.save_text(fp, text, output_dir)
+                    elif result and isinstance(result, dict):
+                        txt = format_timestamped_transcript(result.get('segments', [])) or result['text'].strip()
+                        self.save_text(fp, txt, output_dir)
+                        # Queue for background diarization
+                        if self._diarize_queue is not None:
+                            output_path = self._get_output_path(fp, output_dir)
+                            self._diarize_queue.put((fp, result, output_path))
+                            self._diarize_total += 1
                 except Exception as e:
                     logger.warning("Retry failed for %s: %s: %s", fp.name, type(e).__name__, e)
                     self._log_error(fp, f"Retry failed: {type(e).__name__}: {e}")
@@ -850,6 +834,92 @@ def run_preflight(source_dir: Path, config: PipelineConfig) -> bool:
     return True
 
 
+def run_diarize_pass(output_dir: Path, source_dir: Path, config: PipelineConfig):
+    """Run a standalone diarization pass on pending .whisper.json sidecars.
+    Used when all transcription is complete but diarization was interrupted.
+    """
+    from core.progress_bar import bold_cyan, dim, yellow, green
+    from core.diarizer import (
+        Diarizer, is_available as diarizer_available,
+        assign_speakers, assign_speakers_to_words, format_diarized_transcript,
+    )
+    import json
+
+    pending = list(output_dir.rglob('*.whisper.json'))
+    if not pending:
+        return
+
+    print()
+    print(f"  {bold_cyan('Transcriptor')}")
+    print(f"  {dim('─' * 50)}")
+    print()
+    print(f"  {yellow('↻')} {dim(f'{len(pending)} files need diarization')}")
+    print()
+    print(f"  {dim('Press Enter to start...')}")
+    input()
+
+    if not diarizer_available():
+        return
+
+    diarize_spinner = Spinner("Loading speaker diarization model...")
+    diarize_spinner.start()
+    diarizer = Diarizer()
+    # Load directly to GPU (no whisper competing)
+    if not diarizer.initialize(device="cuda"):
+        diarizer.initialize(device="cpu")
+    diarize_spinner.stop()
+    print(f"  {green('✓')} {dim('Speaker diarization loaded (GPU)')}")
+    print()
+
+    diarize_bar = ProgressBar(len(pending), desc="Diarizing")
+    num_speakers = config.whisper_diarize_speakers if hasattr(config, 'whisper_diarize_speakers') else 0
+    errors = 0
+
+    for sidecar in sorted(pending):
+        try:
+            data = json.loads(sidecar.read_text(encoding='utf-8'))
+            txt_path = sidecar.with_name(sidecar.name.replace('.whisper.json', '.txt'))
+            media = Path(data.get('source', ''))
+
+            # Find source media: try stored path, then match by txt filename
+            if not media.exists():
+                for sub in [source_dir] + [d for d in source_dir.rglob('*') if d.is_dir()]:
+                    for ext in ('.mp4', '.mp3', '.wav', '.m4a', '.flac', '.ogg'):
+                        candidate = sub / (txt_path.stem + ext)
+                        if candidate.exists():
+                            media = candidate
+                            break
+                    if media.exists():
+                        break
+
+            if txt_path.exists() and media.exists():
+                speaker_segments = diarizer.diarize(str(media), num_speakers=num_speakers)
+                if speaker_segments:
+                    words = data.get('words', [])
+                    segments = data.get('segments', [])
+                    text = None
+                    if words:
+                        tagged = assign_speakers_to_words(words, speaker_segments, min_speaker_seconds=0.0)
+                        text = format_diarized_transcript(words=tagged)
+                    elif segments:
+                        tagged = assign_speakers(segments, speaker_segments)
+                        text = format_diarized_transcript(segments=tagged)
+                    if text and '[Speaker' in text:
+                        txt_path.write_text(text, encoding='utf-8')
+                        sidecar.unlink(missing_ok=True)
+        except Exception:
+            errors += 1
+        diarize_bar.update(1)
+
+    diarize_bar.finish()
+    done = len(pending) - errors
+    print(f"  {green('✓')} {dim(f'{done} files diarized')}")
+    if errors:
+        from core.progress_bar import red
+        print(f"  {red('✗')} {dim(f'{errors} failed')}")
+    print()
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='Material Processing Pipeline')
@@ -879,82 +949,7 @@ def main():
             sys.exit(0)
 
         if not has_files and pending_diarize:
-            # All transcribed, but diarization pending — run diarize-only pass
-            from core.progress_bar import bold_cyan, dim, yellow, green
-            from core.diarizer import Diarizer, is_available as diarizer_available
-            import json
-
-            print()
-            print(f"  {bold_cyan('Transcriptor')}")
-            print(f"  {dim('─' * 50)}")
-            print()
-            print(f"  {yellow('↻')} {dim(f'{len(pending_diarize)} files need diarization')}")
-            print()
-            print(f"  {dim('Press Enter to start...')}")
-            input()
-
-            if diarizer_available():
-                diarize_spinner = Spinner("Loading speaker diarization model...")
-                diarize_spinner.start()
-                diarizer = Diarizer()
-                # Load directly to GPU (no whisper competing)
-                if not diarizer.initialize(device="cuda"):
-                    diarizer.initialize(device="cpu")
-                diarize_spinner.stop()
-                print(f"  {green('✓')} {dim('Speaker diarization loaded (GPU)')}")
-                print()
-
-                from core.diarizer import assign_speakers, assign_speakers_to_words, format_diarized_transcript
-                diarize_bar = ProgressBar(len(pending_diarize), desc="Diarizing")
-                num_speakers = config.whisper_diarize_speakers if hasattr(config, 'whisper_diarize_speakers') else 0
-                errors = 0
-
-                for sidecar in sorted(pending_diarize):
-                    try:
-                        data = json.loads(sidecar.read_text(encoding='utf-8'))
-                        # .whisper.json → .txt (strip both suffixes)
-                        txt_path = sidecar.with_name(sidecar.name.replace('.whisper.json', '.txt'))
-                        media = Path(data.get('source', ''))
-
-                        # Find source media: try stored path, then match by txt filename
-                        if not media.exists():
-                            for sub in [source_dir] + [d for d in source_dir.rglob('*') if d.is_dir()]:
-                                for ext in ('.mp4', '.mp3', '.wav', '.m4a', '.flac', '.ogg'):
-                                    candidate = sub / (txt_path.stem + ext)
-                                    if candidate.exists():
-                                        media = candidate
-                                        break
-                                if media.exists():
-                                    break
-
-                        if txt_path.exists() and media.exists():
-                            speaker_segments = diarizer.diarize(str(media), num_speakers=num_speakers)
-                            if speaker_segments:
-                                words = data.get('words', [])
-                                segments = data.get('segments', [])
-                                text = None
-                                if words:
-                                    tagged = assign_speakers_to_words(words, speaker_segments, min_speaker_seconds=0.0)
-                                    text = format_diarized_transcript(words=tagged)
-                                elif segments:
-                                    tagged = assign_speakers(segments, speaker_segments)
-                                    text = format_diarized_transcript(segments=tagged)
-                                if text and '[Speaker' in text:
-                                    txt_path.write_text(text, encoding='utf-8')
-                                    sidecar.unlink(missing_ok=True)
-                                # No speaker tags = keep sidecar for retry
-                            # Empty speaker_segments = keep sidecar for retry
-                    except Exception as e:
-                        errors += 1
-                    diarize_bar.update(1)
-
-                diarize_bar.finish()
-                done = len(pending_diarize) - errors
-                print(f"  {green('✓')} {dim(f'{done} files diarized')}")
-                if errors:
-                    from core.progress_bar import red
-                    print(f"  {red('✗')} {dim(f'{errors} failed')}")
-                print()
+            run_diarize_pass(output_dir, source_dir, config)
             sys.exit(0)
 
         if has_files:
