@@ -128,6 +128,10 @@ class MaterialProcessor:
         self._diarize_total = 0
         self._diarize_done = 0
         self._diarize_done_lock = threading.Lock()
+        self._diarize_lock = threading.Lock()
+
+        # Progress bar thread safety
+        self._progress_lock = threading.Lock()
 
         # Base directory for audio cache (resolved to project root)
         self._project_root = Path(__file__).parent.parent.resolve()
@@ -437,8 +441,9 @@ class MaterialProcessor:
             # CPU types (pdf, image, document): save text directly
             if text:
                 self.save_text(file_path, text, output_dir)
-                if self.progress_bar:
-                    self.progress_bar.update(1)
+                with self._progress_lock:
+                    if self.progress_bar:
+                        self.progress_bar.update(1)
                 return (True, file_path)
 
             # Audio/video: save plain text now, queue diarization in background
@@ -461,27 +466,56 @@ class MaterialProcessor:
                         'source': str(file_path),
                     }), encoding='utf-8')
                     self._diarize_queue.put((file_path, result, output_path))
-                    self._diarize_total += 1
+                    with self._diarize_lock:
+                        self._diarize_total += 1
 
-                if self.progress_bar:
-                    self.progress_bar.update(1)
+                with self._progress_lock:
+                    if self.progress_bar:
+                        self.progress_bar.update(1)
                 return (True, file_path)
             else:
                 # Processing returned None — record for retry
                 with self._retry_lock:
                     self._retry_queue.append((file_path, file_type))
-                if self.progress_bar:
-                    self.progress_bar.update(1)
+                with self._progress_lock:
+                    if self.progress_bar:
+                        self.progress_bar.update(1)
                 return (False, file_path)
-        except Exception:
+        except Exception as e:
+            logger.error("Worker exception: %s", e, exc_info=True)
+            with self.stats_lock:
+                self.stats['errors'] += 1
             with self._retry_lock:
                 self._retry_queue.append((file_path, file_type))
-            if self.progress_bar:
-                self.progress_bar.update(1)
+            with self._progress_lock:
+                if self.progress_bar:
+                    self.progress_bar.update(1)
             return (False, file_path)
 
-    def process_all(self, source_dir: Path, output_dir: Path):
-        """Process all materials with parallel processing"""
+    def _diarize_worker(self, diarize_stop: threading.Event):
+        """Background worker that pulls items from the diarize queue and applies diarization."""
+        while not diarize_stop.is_set() or not self._diarize_queue.empty():
+            try:
+                media_path, whisper_result, output_path = self._diarize_queue.get(timeout=2)
+            except Empty:
+                continue
+            try:
+                diarized = self._apply_diarization(whisper_result, media_path)
+                if diarized and '[Speaker' in diarized:
+                    # Diarization succeeded — overwrite and remove sidecar
+                    output_path.write_text(diarized, encoding='utf-8')
+                    sidecar = output_path.with_name(output_path.stem + '.whisper.json')
+                    sidecar.unlink(missing_ok=True)
+                # If no speaker tags, keep the sidecar for retry/resume
+            except Exception as e:
+                self._log_error(media_path, f"Diarize: {type(e).__name__}: {e}")
+            with self._diarize_done_lock:
+                self._diarize_done += 1
+
+    def _prepare_materials(self, source_dir: Path, output_dir: Path) -> dict:
+        """Phase 1: Setup, filtering, material discovery.
+        Returns filtered materials dict. Returns empty dict if nothing to process.
+        """
         # Clear processed files tracking from previous runs
         with self.processed_files_lock:
             self.processed_files.clear()
@@ -498,11 +532,13 @@ class MaterialProcessor:
                 if not output_path.exists():
                     filtered[file_type].append(file_path)
 
-        materials = filtered
-        total_files = sum(len(files) for files in materials.values())
+        return filtered
 
-        if total_files == 0:
-            return
+    def _run_primary_processing(self, materials: dict, output_dir: Path):
+        """Phase 2: Whisper init, thread pool dispatch, progress tracking, retries.
+        Stores diarize_threads and diarize_stop on self for phase 3.
+        """
+        total_files = sum(len(files) for files in materials.values())
 
         # Determine if we need Whisper (audio or video files present)
         needs_whisper = bool(materials['audio'] or materials['videos'])
@@ -560,30 +596,11 @@ class MaterialProcessor:
         # ── Background diarization pipeline ──────────────────────────────
         # Diarize workers run concurrently with whisper: CPU during whisper,
         # auto-switch to GPU when whisper finishes and frees VRAM.
-        diarize_threads = []
-        diarize_stop = threading.Event()
+        self._diarize_threads = []
+        self._diarize_stop = threading.Event()
 
         if self.diarizer:
             self._diarize_queue = Queue()
-
-            def _diarize_worker():
-                while not diarize_stop.is_set() or not self._diarize_queue.empty():
-                    try:
-                        media_path, whisper_result, output_path = self._diarize_queue.get(timeout=2)
-                    except Empty:
-                        continue
-                    try:
-                        diarized = self._apply_diarization(whisper_result, media_path)
-                        if diarized and '[Speaker' in diarized:
-                            # Diarization succeeded — overwrite and remove sidecar
-                            output_path.write_text(diarized, encoding='utf-8')
-                            sidecar = output_path.with_name(output_path.stem + '.whisper.json')
-                            sidecar.unlink(missing_ok=True)
-                        # If no speaker tags, keep the sidecar for retry/resume
-                    except Exception as e:
-                        self._log_error(media_path, f"Diarize: {type(e).__name__}: {e}")
-                    with self._diarize_done_lock:
-                        self._diarize_done += 1
 
             # Resume: pick up any .whisper.json sidecars left from a previous run
             import json
@@ -594,22 +611,21 @@ class MaterialProcessor:
                     media = Path(data.get('source', ''))
                     if txt_path.exists() and media.exists():
                         self._diarize_queue.put((media, data, txt_path))
-                        self._diarize_total += 1
-                except Exception:
-                    pass
+                        with self._diarize_lock:
+                            self._diarize_total += 1
+                except Exception as e:
+                    logger.error("Failed to load diarize sidecar %s: %s", sidecar, e, exc_info=True)
             if self._diarize_total > 0:
                 from core.progress_bar import dim, yellow
                 logger.info("Resuming diarization for %d files", self._diarize_total)
                 print(f"  {yellow('↻')} {dim(f'Resuming diarization for {self._diarize_total} files')}")
 
             # 1 worker during whisper (CPU, minimal contention)
-            t = threading.Thread(target=_diarize_worker, daemon=True)
+            t = threading.Thread(target=self._diarize_worker, args=(self._diarize_stop,), daemon=True)
             t.start()
-            diarize_threads.append(t)
+            self._diarize_threads.append(t)
 
         # Build a flat task list: (file_path, file_type)
-        # Process whisper tasks (audio+video) separately from CPU tasks
-        # because they share the whisper pool and need different worker counts
         whisper_tasks = []
         cpu_tasks = []
 
@@ -626,7 +642,6 @@ class MaterialProcessor:
                     cpu_tasks.append((fp, file_type))
 
         # Process whisper tasks and CPU tasks concurrently
-        # Whisper pool has its own thread-safe queue, CPU tasks use separate executor
         futures = []
 
         whisper_executor = None
@@ -646,8 +661,10 @@ class MaterialProcessor:
         for future in as_completed(futures):
             try:
                 future.result()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Worker exception: %s", e, exc_info=True)
+                with self.stats_lock:
+                    self.stats['errors'] += 1
 
         # Shutdown executors
         if whisper_executor:
@@ -701,22 +718,24 @@ class MaterialProcessor:
                         if self._diarize_queue is not None:
                             output_path = self._get_output_path(fp, output_dir)
                             self._diarize_queue.put((fp, result, output_path))
-                            self._diarize_total += 1
+                            with self._diarize_lock:
+                                self._diarize_total += 1
                 except Exception as e:
                     logger.warning("Retry failed for %s: %s: %s", fp.name, type(e).__name__, e)
                     self._log_error(fp, f"Retry failed: {type(e).__name__}: {e}")
                     with self.stats_lock:
                         self.stats['errors'] += 1
 
-        # ── Drain remaining diarization queue ─────────────────────────────────
-        # Whisper is done. Free VRAM, move diarizer to GPU, add more workers
-        # to drain the remaining queue much faster.
+    def _run_diarization_drain(self):
+        """Phase 3: Drain remaining diarization queue, cleanup.
+        Must be called after _run_primary_processing.
+        """
         if self.diarizer and self._diarize_queue is not None:
             remaining = self._diarize_queue.qsize()
             if remaining > 0:
                 from core.progress_bar import dim
 
-                # Free whisper models → reclaim GPU VRAM
+                # Free whisper models -> reclaim GPU VRAM
                 if self.whisper_pool:
                     self.whisper_pool.clear()
 
@@ -725,29 +744,45 @@ class MaterialProcessor:
                     import torch
                     torch.cuda.empty_cache()
                     self.diarizer._pipeline.to(torch.device("cuda"))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Failed to move diarizer to GPU: %s", e, exc_info=True)
 
                 logger.info("Diarizing remaining %d files on GPU", remaining)
                 print(f"  {dim('⠿')} {dim(f'Diarizing remaining {remaining} files on GPU...')}")
 
                 # Spin up 1 more GPU worker to help drain (2 total)
-                t = threading.Thread(target=_diarize_worker, daemon=True)
+                t = threading.Thread(target=self._diarize_worker, args=(self._diarize_stop,), daemon=True)
                 t.start()
-                diarize_threads.append(t)
+                self._diarize_threads.append(t)
 
             # Signal workers to stop after queue is empty, then wait
-            diarize_stop.set()
-            for t in diarize_threads:
+            self._diarize_stop.set()
+            for t in self._diarize_threads:
                 t.join(timeout=3600)  # 1h max wait
 
             with self._diarize_done_lock:
                 done = self._diarize_done
-            total = self._diarize_total
+            with self._diarize_lock:
+                total = self._diarize_total
             if total > 0:
                 from core.progress_bar import dim, green
                 logger.info("Diarization complete: %d/%d files", done, total)
                 print(f"  {green('✓')} {dim(f'{done}/{total} files diarized')}")
+
+    def process_all(self, source_dir: Path, output_dir: Path):
+        """Process all materials with parallel processing.
+        Orchestrates three phases: prepare, primary processing, diarization drain.
+        """
+        materials = self._prepare_materials(source_dir, output_dir)
+        if not materials:
+            return
+
+        total_files = sum(len(files) for files in materials.values())
+        if total_files == 0:
+            return
+
+        self._run_primary_processing(materials, output_dir)
+        self._run_diarization_drain()
 
         # Print completion summary
         self._print_summary()
@@ -907,7 +942,8 @@ def run_diarize_pass(output_dir: Path, source_dir: Path, config: PipelineConfig)
                     if text and '[Speaker' in text:
                         txt_path.write_text(text, encoding='utf-8')
                         sidecar.unlink(missing_ok=True)
-        except Exception:
+        except Exception as e:
+            logger.error("Diarize pass failed for %s: %s", sidecar.name, e, exc_info=True)
             errors += 1
         diarize_bar.update(1)
 
