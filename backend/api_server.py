@@ -6,6 +6,7 @@ Provides REST API and Server-Sent Events for real-time progress updates
 
 import sys
 import os
+import logging
 from pathlib import Path
 import json
 import threading
@@ -18,6 +19,11 @@ from flask_cors import CORS
 
 # Add core to path
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Import quiet module first to initialize logging configuration
+from core.quiet import quiet_print  # noqa: F401 — triggers logging.basicConfig
+
+logger = logging.getLogger('transcriptor.api')
 
 from core.config_loader import load_config, PipelineConfig
 from core.processing_calculator import ProcessingCalculator
@@ -302,6 +308,7 @@ def events():
 
 def main():
     """Start the API server"""
+    logger.info("API server starting on http://localhost:5000")
     print("=" * 60)
     print("Material Processing Pipeline - API Server")
     print("=" * 60)

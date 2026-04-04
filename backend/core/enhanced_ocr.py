@@ -13,11 +13,14 @@ Image preprocessing improvements:
 - Deskewing
 - Binarization
 """
+import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
 import os
 
 from .quiet import quiet_print
+
+logger = logging.getLogger('transcriptor.ocr')
 
 try:
     from PIL import Image, ImageEnhance, ImageFilter

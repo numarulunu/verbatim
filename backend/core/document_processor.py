@@ -16,11 +16,14 @@ Features:
 - Error handling for corrupted files
 """
 
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import os
 
 from .quiet import quiet_print
+
+logger = logging.getLogger('transcriptor.document')
 
 try:
     from docx import Document

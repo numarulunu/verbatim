@@ -16,12 +16,15 @@ Supports configuration for:
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field, asdict
 
 from .quiet import quiet_print
+
+logger = logging.getLogger('transcriptor.config')
 
 
 @dataclass

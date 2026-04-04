@@ -31,6 +31,8 @@ import psutil
 # Add core to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import logging
+
 from core.config_loader import load_config, PipelineConfig
 from core.document_processor import DocumentProcessor, DocumentProcessingError
 from core.enhanced_ocr import EnhancedOCR
@@ -43,6 +45,8 @@ from core.progress_bar import (
     print_preflight, print_model_info, print_model_info_full, print_no_files, print_error,
     dim, bold, cyan, green, bold_cyan,
 )
+
+logger = logging.getLogger('transcriptor.process')
 
 
 def sanitize_filename(filename: str) -> str:
@@ -130,6 +134,7 @@ class MaterialProcessor:
 
     def _log_error(self, file_path: Path, message: str):
         """Record an error for display at the end of processing"""
+        logger.error("Processing error [%s]: %s", file_path.name, message)
         with self._errors_lock:
             self._errors.append((file_path.name, message))
 
@@ -144,7 +149,7 @@ class MaterialProcessor:
         }
 
         if not source_dir.exists():
-            print(f"Error: Source directory not found: {source_dir}")
+            logger.error("Source directory not found: %s", source_dir)
             return materials
 
         for file_path in source_dir.rglob('*'):
@@ -241,6 +246,7 @@ class MaterialProcessor:
                 is_cuda = 'cuda' in str(e).lower() or 'CUDA' in str(e)
 
                 if (is_oom or is_cuda) and attempt < max_retries:
+                    logger.warning("Transient error on attempt %d for %s: %s — retrying", attempt, media_path.name, e)
                     # Clear GPU cache and wait before retry
                     try:
                         import torch
@@ -390,7 +396,9 @@ class MaterialProcessor:
                 counter += 1
 
             output_path.write_text(text, encoding='utf-8')
+            logger.info("Saved: %s", output_path.name)
         except Exception as e:
+            logger.error("Error saving %s: %s", source_path.name, e)
             quiet_print(f"Error saving {source_path.name}: {e}", error=True)
 
     def _process_file_wrapper(self, file_path: Path, file_type: str, output_dir: Path):
@@ -503,7 +511,10 @@ class MaterialProcessor:
         needs_whisper = bool(materials['audio'] or materials['videos'])
         video_workers = self.config.max_parallel_workers
 
+        logger.info("Starting processing: %d files", total_files)
+
         if needs_whisper:
+            logger.info("Loading Whisper models (%s)", self.config.whisper_model)
             spinner = Spinner(f"Loading Whisper models ({self.config.whisper_model})...")
             spinner.start()
             self.whisper_pool = WhisperModelPool()
@@ -516,6 +527,8 @@ class MaterialProcessor:
             video_workers = self.whisper_pool.get_num_workers()
             info = self.whisper_pool.get_info()
             spinner.stop()
+            logger.info("Whisper loaded: %s, %d GPU + %d CPU workers",
+                        info.get('backend', '?'), info.get('gpu_workers', 0), info.get('cpu_workers', 0))
             print_model_info_full(info)
 
             # Initialize diarization if enabled
@@ -528,6 +541,7 @@ class MaterialProcessor:
                 diarize_spinner.stop()
                 if self.diarizer:
                     from core.progress_bar import green, dim
+                    logger.info("Speaker diarization enabled")
                     print(f"  {green('✓')} {dim('Speaker diarization enabled')}")
                     print()
 
@@ -588,6 +602,7 @@ class MaterialProcessor:
                     pass
             if self._diarize_total > 0:
                 from core.progress_bar import dim, yellow
+                logger.info("Resuming diarization for %d files", self._diarize_total)
                 print(f"  {yellow('↻')} {dim(f'Resuming diarization for {self._diarize_total} files')}")
 
             # 1 worker during whisper (CPU, minimal contention)
@@ -653,6 +668,7 @@ class MaterialProcessor:
 
         if retry_list:
             from core.progress_bar import yellow, dim
+            logger.warning("Retrying %d failed files", len(retry_list))
             print(f"  {yellow('↻')} {dim(f'Retrying {len(retry_list)} failed files...')}")
 
             # Clear GPU cache before retries
@@ -703,6 +719,7 @@ class MaterialProcessor:
                         if text:
                             self.save_text(fp, text, output_dir)
                 except Exception as e:
+                    logger.warning("Retry failed for %s: %s: %s", fp.name, type(e).__name__, e)
                     self._log_error(fp, f"Retry failed: {type(e).__name__}: {e}")
                     with self.stats_lock:
                         self.stats['errors'] += 1
@@ -727,6 +744,7 @@ class MaterialProcessor:
                 except Exception:
                     pass
 
+                logger.info("Diarizing remaining %d files on GPU", remaining)
                 print(f"  {dim('⠿')} {dim(f'Diarizing remaining {remaining} files on GPU...')}")
 
                 # Spin up 1 more GPU worker to help drain (2 total)
@@ -744,6 +762,7 @@ class MaterialProcessor:
             total = self._diarize_total
             if total > 0:
                 from core.progress_bar import dim, green
+                logger.info("Diarization complete: %d/%d files", done, total)
                 print(f"  {green('✓')} {dim(f'{done}/{total} files diarized')}")
 
         # Print completion summary
@@ -772,15 +791,19 @@ class MaterialProcessor:
 
         if total_ok > 0:
             detail = dim(", ").join(dim(p) for p in parts)
+            logger.info("Transcribed %d files (%s)", total_ok, ", ".join(parts))
             print(f"  {green('✓')} {bold(str(total_ok))} {dim('transcribed')}  ({detail})")
         else:
+            logger.warning("No files were transcribed")
             print(f"  {yellow('⚠')} {dim('No files were transcribed.')}")
 
         if errors > 0:
+            logger.error("%d files failed", errors)
             print(f"  {red('✗')} {bold(str(errors))} {dim('failed')}")
             # Show up to 5 error details
             with self._errors_lock:
                 for name, msg in self._errors[:5]:
+                    logger.error("  %s: %s", name, msg)
                     print(f"    {dim('·')} {dim(name)}: {dim(msg)}")
                 if len(self._errors) > 5:
                     print(f"    {dim(f'... and {len(self._errors) - 5} more')}")
@@ -819,6 +842,7 @@ def run_preflight(source_dir: Path, config: PipelineConfig) -> bool:
     estimates = calculator.calculate_all(filtered)
 
     if skipped > 0:
+        logger.info("%d files already transcribed, skipping", skipped)
         print()
         print(f"  {dim(f'{skipped} files already transcribed, skipping.')}")
 
@@ -942,9 +966,11 @@ def main():
         print()
 
     except KeyboardInterrupt:
+        logger.info("Processing interrupted by user")
         print(f"\n\n  {dim('Interrupted.')}")
         sys.exit(1)
     except Exception as e:
+        logger.error("Fatal error: %s", e, exc_info=True)
         print()
         print_error(str(e))
         import traceback

@@ -10,6 +10,7 @@ Requires:
   Accept terms at huggingface.co/pyannote/speaker-diarization-3.1
 """
 
+import logging
 import os
 import sys
 import subprocess
@@ -23,6 +24,8 @@ from pathlib import Path
 import numpy as np
 
 from .quiet import quiet_print
+
+logger = logging.getLogger('transcriptor.diarizer')
 
 _PYANNOTE_AVAILABLE = False
 try:

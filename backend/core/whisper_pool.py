@@ -21,7 +21,11 @@ warnings.filterwarnings("ignore", message=".*huggingface_hub.*cache.*symlinks.*"
 warnings.filterwarnings("ignore", message=".*pynvml.*deprecated.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module=".*pynvml.*")
 
+import logging
+
 from .quiet import quiet_print
+
+logger = logging.getLogger('transcriptor.whisper')
 
 # ── Hardware detection ────────────────────────────────────────────────────────
 
