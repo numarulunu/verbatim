@@ -18,18 +18,12 @@ import time
 import threading
 from pathlib import Path
 
-# Add backend to path
+# Add backend to path — but DON'T import heavy modules at top level.
+# Only import torch/whisper/etc when actually needed (--run and --detect).
 BACKEND_DIR = Path(__file__).resolve().parent.parent / 'backend'
 sys.path.insert(0, str(BACKEND_DIR))
 
-# Force quiet mode
 os.environ['PIPELINE_QUIET'] = '1'
-
-import warnings
-warnings.filterwarnings("ignore")
-
-from core.config_loader import PipelineConfig
-from core.processing_calculator import ProcessingCalculator
 
 SUPPORTED_EXTS = {
     'audio': {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus'},
@@ -167,6 +161,10 @@ def _get_duration(path):
 
 def cmd_run(job):
     """Run transcription with JSON progress output."""
+    import warnings
+    warnings.filterwarnings("ignore")
+    from core.config_loader import PipelineConfig
+
     input_dir = Path(job['input'])
     output_dir = Path(job['output'])
     selected_files = job.get('files', [])
