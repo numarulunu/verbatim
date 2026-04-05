@@ -8,16 +8,11 @@
 </head>
 <body>
 
-<!-- Backend status banner -->
-<div class="backend-warning" id="backendWarning" style="display:none">
-  Backend is not running. Make sure Python and dependencies are installed.
-</div>
-
 <!-- Settings bar -->
 <div class="settings-bar">
   <div class="settings-row">
     <div class="setting">
-      <label>Input (Material)</label>
+      <label>Input (Materials)</label>
       <div class="folder-picker">
         <span class="folder-path" id="inputPath">No folder selected</span>
         <button id="btnInputFolder">Browse</button>
@@ -69,7 +64,7 @@
         <option value="5">5 speakers</option>
       </select>
     </div>
-    <button class="btn-refresh" id="btnRefresh" title="Rescan files">&#x21bb; Scan</button>
+    <button class="btn-refresh" id="btnRefresh" title="Rescan files">&#x21bb; Refresh</button>
   </div>
   <div class="settings-row">
     <div class="file-type-toggles">
@@ -85,14 +80,21 @@
   </div>
 </div>
 
-<!-- Log / progress area -->
-<div class="log-area" id="logArea">
-  <div class="empty-state" id="emptyState">Select input/output folders and click Scan</div>
+<!-- File queue header -->
+<div class="queue-header" id="queueHeader" style="display:none">
+  <label class="toggle"><input type="checkbox" id="selectAll" checked> Select All</label>
+  <span class="file-count" id="fileCount"></span>
+  <button class="btn-delete" id="btnDeleteOriginals" style="display:none">Delete Originals</button>
+</div>
+
+<!-- File queue -->
+<div class="file-queue" id="fileQueue">
+  <div class="empty-state">Select input/output folders and click Refresh</div>
 </div>
 
 <!-- Bottom bar -->
 <div class="bottom-bar">
-  <div class="system-info" id="systemInfo">Starting backend...</div>
+  <div class="system-info" id="systemInfo">Detecting system...</div>
   <div class="controls">
     <div class="overall-progress" id="overallProgress"></div>
     <button class="btn-start" id="btnStart" disabled>Start</button>

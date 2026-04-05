@@ -1,31 +1,24 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
+const readline = require('readline');
 
 // Paths
 const IS_PACKAGED = app.isPackaged;
 const RESOURCES = path.join(__dirname, 'resources');
-const DATA_DIR = IS_PACKAGED ? app.getPath('userData') : __dirname;
-const SETTINGS_FILE = path.join(DATA_DIR, 'transcriptor-settings.json');
-
-// The backend lives in the original project directory, not in the installed app.
-// In dev mode: ../backend. In packaged mode: stored default or auto-detected.
 const PROJECT_ROOT = IS_PACKAGED
     ? 'C:\\Users\\Gaming PC\\Desktop\\Transcriptor v2'
     : path.join(__dirname, '..');
-const BACKEND_DIR = path.join(PROJECT_ROOT, 'backend');
-const VENV_PYTHON = path.join(BACKEND_DIR, '.venv', 'Scripts', 'python.exe');
-
-const API_PORT = 5000;
-const API_BASE = `http://localhost:${API_PORT}`;
+const VENV_PYTHON = path.join(PROJECT_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
+const BRIDGE = path.join(IS_PACKAGED ? path.dirname(app.getPath('exe')) : __dirname, 'bridge.py');
+const DATA_DIR = IS_PACKAGED ? app.getPath('userData') : __dirname;
+const SETTINGS_FILE = path.join(DATA_DIR, 'transcriptor-settings.json');
 
 let win = null;
 let tray = null;
-let serverProcess = null;
-let sseConnection = null;
+let engineProcess = null;
 
 // Single instance
 const gotLock = app.requestSingleInstanceLock();
@@ -50,8 +43,6 @@ const DEFAULT_SETTINGS = {
     processXlsx: true,
     processPptx: true,
     processTxt: true,
-    processCsv: true,
-    processRtf: true,
     startWithWindows: false,
 };
 
@@ -64,200 +55,134 @@ function writeSettings(settings) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
-// === API Server Management ===
+// === Engine communication ===
 
-function startServer() {
+function runBridge(args) {
+    return spawn(VENV_PYTHON, [BRIDGE, ...args], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+    });
+}
+
+function runBridgeAsync(args) {
     return new Promise((resolve, reject) => {
-        // Check if already running
-        httpGet(`${API_BASE}/api/status`).then(() => {
-            resolve();  // Already running
-        }).catch(() => {
-            // Start the Flask server
-            const env = { ...process.env, PIPELINE_QUIET: '1' };
-            serverProcess = spawn(VENV_PYTHON, [
-                path.join(BACKEND_DIR, 'api_server.py')
-            ], {
-                cwd: BACKEND_DIR,
-                env,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                windowsHide: true,
-            });
-
-            serverProcess.on('error', (err) => {
-                console.error('[server] Spawn error:', err.message);
-                reject(err);
-            });
-
-            serverProcess.stderr.on('data', (d) => {
-                const msg = d.toString();
-                // Flask prints its startup message to stderr
-                if (msg.includes('Running on')) {
-                    resolve();
-                }
-            });
-
-            // Poll until server responds (max 30s)
-            let attempts = 0;
-            const poll = setInterval(() => {
-                attempts++;
-                httpGet(`${API_BASE}/api/status`).then(() => {
-                    clearInterval(poll);
-                    resolve();
-                }).catch(() => {
-                    if (attempts > 60) {
-                        clearInterval(poll);
-                        reject(new Error('Server failed to start within 30s'));
-                    }
-                });
-            }, 500);
+        const proc = runBridge(args);
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => { stdout += d.toString(); });
+        proc.stderr.on('data', (d) => { stderr += d.toString(); });
+        proc.on('close', (code) => {
+            if (code === 0) resolve(stdout.trim());
+            else reject(new Error(stderr.substring(0, 500) || `Exit code ${code}`));
         });
+        proc.on('error', reject);
     });
 }
 
-function stopServer() {
-    if (sseConnection) {
-        sseConnection.destroy();
-        sseConnection = null;
-    }
-    if (serverProcess) {
-        serverProcess.kill();
-        serverProcess = null;
-    }
-}
-
-function httpGet(url) {
-    return new Promise((resolve, reject) => {
-        const req = http.get(url, { timeout: 3000 }, (res) => {
-            let data = '';
-            res.on('data', (d) => data += d);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); }
-                catch { resolve(data); }
-            });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-    });
-}
-
-function httpPost(url, body) {
-    return new Promise((resolve, reject) => {
-        const payload = JSON.stringify(body);
-        const urlObj = new URL(url);
-        const req = http.request({
-            hostname: urlObj.hostname,
-            port: urlObj.port,
-            path: urlObj.pathname,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-            timeout: 5000,
-        }, (res) => {
-            let data = '';
-            res.on('data', (d) => data += d);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); }
-                catch { resolve(data); }
-            });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-        req.write(payload);
-        req.end();
-    });
-}
-
-// === SSE listener for real-time progress ===
-
-function connectSSE() {
-    if (sseConnection) sseConnection.destroy();
-
-    const req = http.get(`${API_BASE}/api/events`, (res) => {
-        sseConnection = res;
-        let buffer = '';
-
-        res.on('data', (chunk) => {
-            buffer += chunk.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.type === 'progress') {
-                            win?.webContents.send('processing-progress', data.data);
-                        } else if (data.type === 'log') {
-                            win?.webContents.send('processing-log', data.data);
-                        } else if (data.type === 'complete') {
-                            win?.webContents.send('processing-complete', data.data);
-                        }
-                    } catch {}
-                }
-            }
-        });
-
-        res.on('end', () => {
-            sseConnection = null;
-            // Reconnect after 2s
-            setTimeout(connectSSE, 2000);
-        });
-    });
-
-    req.on('error', () => {
-        sseConnection = null;
-        setTimeout(connectSSE, 2000);
-    });
+function writeJobFile(data) {
+    const jobFile = path.join(DATA_DIR, 'current-job.json');
+    fs.writeFileSync(jobFile, JSON.stringify(data, null, 2), 'utf-8');
+    return jobFile;
 }
 
 // === IPC Handlers ===
 
-ipcMain.handle('get-config', async () => {
+ipcMain.handle('detect-system', async () => {
     try {
-        const result = await httpGet(`${API_BASE}/api/config`);
-        return result;
+        const raw = await runBridgeAsync(['--detect']);
+        return JSON.parse(raw);
     } catch (err) {
-        return { success: false, error: err.message };
+        return { error: err.message, whisper: false, cuda: false, tesseract: false };
     }
 });
 
-ipcMain.handle('save-config', async (_, config) => {
+ipcMain.handle('scan-files', async (_, { inputFolder, outputFolder }) => {
     try {
-        return await httpPost(`${API_BASE}/api/config`, config);
+        const jobFile = writeJobFile({ input: inputFolder, output: outputFolder });
+        const raw = await runBridgeAsync(['--scan', '--job', jobFile]);
+        return JSON.parse(raw);
     } catch (err) {
-        return { success: false, error: err.message };
+        return { files: [], done: [], error: err.message };
     }
 });
 
-ipcMain.handle('preflight', async (_, config) => {
-    try {
-        return await httpPost(`${API_BASE}/api/preflight`, config);
-    } catch (err) {
-        return { success: false, error: err.message };
-    }
-});
+ipcMain.handle('start-processing', async (_, settings) => {
+    if (engineProcess) return { error: 'Already running' };
 
-ipcMain.handle('start-processing', async (_, config) => {
-    try {
-        connectSSE();
-        return await httpPost(`${API_BASE}/api/start`, config);
-    } catch (err) {
-        return { success: false, error: err.message };
-    }
-});
+    const jobFile = writeJobFile({
+        input: settings.inputFolder,
+        output: settings.outputFolder,
+        whisperModel: settings.whisperModel,
+        whisperLanguage: settings.whisperLanguage,
+        whisperBeamSize: settings.whisperBeamSize || 1,
+        diarize: settings.diarize,
+        diarizeSpeakers: settings.diarizeSpeakers || 0,
+        processAudio: settings.processAudio,
+        processVideos: settings.processVideos,
+        processPdf: settings.processPdf,
+        processImages: settings.processImages,
+        processDocx: settings.processDocx,
+        processXlsx: settings.processXlsx,
+        processPptx: settings.processPptx,
+        processTxt: settings.processTxt,
+        files: settings.selectedFiles || [],
+    });
 
-ipcMain.handle('get-status', async () => {
-    try {
-        return await httpGet(`${API_BASE}/api/status`);
-    } catch (err) {
-        return { success: false, error: err.message };
-    }
+    engineProcess = runBridge(['--run', '--job', jobFile]);
+
+    const rl = readline.createInterface({ input: engineProcess.stdout });
+    rl.on('line', (line) => {
+        try {
+            const data = JSON.parse(line);
+            if (data.type === 'file_done') {
+                win?.webContents.send('processing-file-done', data);
+            } else if (data.type === 'batch_done') {
+                win?.webContents.send('processing-batch-done', data);
+            } else if (data.type === 'status') {
+                win?.webContents.send('processing-status', data);
+            } else if (data.type === 'error') {
+                win?.webContents.send('processing-error', data);
+            }
+        } catch {}
+    });
+
+    engineProcess.stderr.on('data', (d) => {
+        // Whisper/torch prints warnings to stderr — ignore
+    });
+
+    engineProcess.on('close', () => {
+        engineProcess = null;
+    });
+
+    engineProcess.on('error', (err) => {
+        win?.webContents.send('processing-error', { message: err.message });
+        engineProcess = null;
+    });
+
+    return { started: true };
 });
 
 ipcMain.on('stop-processing', () => {
-    // Kill the server process to stop processing
-    stopServer();
-    // Restart for next use
-    startServer().catch(() => {});
+    if (engineProcess) {
+        try {
+            execSync(`taskkill /PID ${engineProcess.pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
+        } catch {}
+        engineProcess = null;
+    }
+});
+
+ipcMain.handle('delete-files', async (_, filePaths) => {
+    const deleted = [];
+    const failed = [];
+    for (const fp of filePaths) {
+        try {
+            await shell.trashItem(fp);
+            deleted.push(fp);
+        } catch (err) {
+            failed.push({ path: fp, error: err.message });
+        }
+    }
+    return { deleted: deleted.length, failed };
 });
 
 ipcMain.handle('pick-folder', async () => {
@@ -355,21 +280,13 @@ autoUpdater.on('error', (err) => {
 
 // === App lifecycle ===
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
     createTray();
     createWindow();
 
     const prefs = readSettings();
     if (prefs.startWithWindows) {
         app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
-    }
-
-    // Start the Flask API server
-    try {
-        await startServer();
-        win?.webContents.send('processing-log', { message: 'Backend ready', level: 'INFO' });
-    } catch (err) {
-        console.error('Failed to start backend:', err.message);
     }
 
     if (IS_PACKAGED) {
@@ -380,5 +297,10 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', (e) => e.preventDefault());
 
 app.on('before-quit', () => {
-    stopServer();
+    if (engineProcess) {
+        try {
+            execSync(`taskkill /PID ${engineProcess.pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
+        } catch {}
+        engineProcess = null;
+    }
 });
