@@ -7,16 +7,17 @@ const http = require('http');
 
 // Paths
 const IS_PACKAGED = app.isPackaged;
-const APP_ROOT = IS_PACKAGED ? path.dirname(app.getPath('exe')) : __dirname;
 const RESOURCES = path.join(__dirname, 'resources');
-const BACKEND_DIR = IS_PACKAGED
-    ? path.join(APP_ROOT, 'backend')
-    : path.join(__dirname, '..', 'backend');
-const VENV_PYTHON = IS_PACKAGED
-    ? path.join(APP_ROOT, 'backend', '.venv', 'Scripts', 'python.exe')
-    : path.join(__dirname, '..', 'backend', '.venv', 'Scripts', 'python.exe');
 const DATA_DIR = IS_PACKAGED ? app.getPath('userData') : __dirname;
 const SETTINGS_FILE = path.join(DATA_DIR, 'transcriptor-settings.json');
+
+// The backend lives in the original project directory, not in the installed app.
+// In dev mode: ../backend. In packaged mode: stored default or auto-detected.
+const PROJECT_ROOT = IS_PACKAGED
+    ? 'C:\\Users\\Gaming PC\\Desktop\\Transcriptor v2'
+    : path.join(__dirname, '..');
+const BACKEND_DIR = path.join(PROJECT_ROOT, 'backend');
+const VENV_PYTHON = path.join(BACKEND_DIR, '.venv', 'Scripts', 'python.exe');
 
 const API_PORT = 5000;
 const API_BASE = `http://localhost:${API_PORT}`;
