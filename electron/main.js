@@ -147,6 +147,17 @@ ipcMain.handle('start-processing', async (_, settings) => {
         } catch {}
     });
 
+    engineProcess.stderr.on('data', () => {});
+
+    engineProcess.on('close', () => {
+        engineProcess = null;
+    });
+
+    engineProcess.on('error', (err) => {
+        win?.webContents.send('processing-error', { message: err.message });
+        engineProcess = null;
+    });
+
     engineProcess.stderr.on('data', (d) => {
         // Whisper/torch prints warnings to stderr — ignore
     });

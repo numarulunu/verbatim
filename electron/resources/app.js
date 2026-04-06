@@ -323,12 +323,21 @@ dom.btnStart.addEventListener('click', async () => {
     });
     renderFiles();
 
-    const result = await ipc.invoke('start-processing', { ...settings, selectedFiles: selectedNames });
-    if (result && result.error) {
+    try {
+        const payload = { ...settings, selectedFiles: selectedNames };
+        dom.overallProgress.textContent = `Starting (${selectedNames.length} files)...`;
+        const result = await ipc.invoke('start-processing', payload);
+        if (result && result.error) {
+            isRunning = false;
+            dom.btnStart.textContent = 'Start';
+            dom.btnStart.classList.remove('stop');
+            dom.overallProgress.textContent = `Error: ${result.error}`;
+        }
+    } catch (err) {
         isRunning = false;
         dom.btnStart.textContent = 'Start';
         dom.btnStart.classList.remove('stop');
-        dom.overallProgress.textContent = `Error: ${result.error}`;
+        dom.overallProgress.textContent = `Error: ${err.message || err}`;
     }
 });
 
