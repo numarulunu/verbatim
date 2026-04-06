@@ -1,27 +1,21 @@
 """
 Transcriptor Bridge — JSON interface for the Electron app.
 
-Wraps process_v2.py's MaterialProcessor and outputs JSON progress lines
-instead of ANSI terminal output. Same pattern as Video Convertor's --run mode.
-
-Usage:
-    python bridge.py --scan --job job.json     # List pending files as JSON
-    python bridge.py --run --job job.json      # Process with JSON progress output
-    python bridge.py --detect                  # System info as JSON
+Wraps process_v2.py and outputs JSON progress lines.
+Uses subprocess to isolate process_v2's ANSI output from our JSON.
 """
 
 import os
 import sys
 import json
 import argparse
+import subprocess
 import time
-import threading
 from pathlib import Path
 
-# Add backend to path — but DON'T import heavy modules at top level.
-# Only import torch/whisper/etc when actually needed (--run and --detect).
 BACKEND_DIR = Path(__file__).resolve().parent.parent / 'backend'
-sys.path.insert(0, str(BACKEND_DIR))
+VENV_PYTHON = str(BACKEND_DIR / '.venv' / 'Scripts' / 'python.exe')
+PROCESS_V2 = str(BACKEND_DIR / 'process_v2.py')
 
 os.environ['PIPELINE_QUIET'] = '1'
 
@@ -38,11 +32,9 @@ for v in SUPPORTED_EXTS.values():
     ALL_EXTS |= v
 
 
-_real_stdout = sys.stdout
-
 def emit(data):
-    _real_stdout.write(json.dumps(data, ensure_ascii=False) + '\n')
-    _real_stdout.flush()
+    sys.stdout.write(json.dumps(data, ensure_ascii=False) + '\n')
+    sys.stdout.flush()
 
 
 def load_job(job_path):
@@ -56,34 +48,51 @@ def cmd_detect():
         'python': sys.version,
         'backend_dir': str(BACKEND_DIR),
         'backend_exists': BACKEND_DIR.exists(),
+        'venv_exists': Path(VENV_PYTHON).exists(),
     }
-    # Check for GPU/CUDA
     try:
-        import torch
-        info['cuda'] = torch.cuda.is_available()
-        if info['cuda']:
-            info['gpu_name'] = torch.cuda.get_device_name(0)
-            props = torch.cuda.get_device_properties(0)
-            info['vram_gb'] = round((getattr(props, 'total_memory', 0) or getattr(props, 'total_mem', 0)) / (1024**3), 1)
-    except ImportError:
+        result = subprocess.run(
+            [VENV_PYTHON, '-c', 'import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")'],
+            capture_output=True, text=True, timeout=30
+        )
+        lines = result.stdout.strip().split('\n')
+        info['cuda'] = lines[0] == 'True'
+        info['gpu_name'] = lines[1] if len(lines) > 1 and lines[1] else None
+    except Exception:
         info['cuda'] = False
+        info['gpu_name'] = None
 
-    # Check for whisper
     try:
-        import faster_whisper
-        info['whisper'] = True
-    except ImportError:
+        result = subprocess.run(
+            [VENV_PYTHON, '-c', 'import faster_whisper; print("ok")'],
+            capture_output=True, text=True, timeout=15
+        )
+        info['whisper'] = 'ok' in result.stdout
+    except Exception:
         info['whisper'] = False
 
-    # Check for tesseract
     try:
-        import pytesseract
-        pytesseract.get_tesseract_version()
-        info['tesseract'] = True
+        result = subprocess.run(
+            [VENV_PYTHON, '-c', 'import pytesseract; pytesseract.get_tesseract_version(); print("ok")'],
+            capture_output=True, text=True, timeout=10
+        )
+        info['tesseract'] = 'ok' in result.stdout
     except Exception:
         info['tesseract'] = False
 
     emit(info)
+
+
+def _get_duration(path):
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
+             '-of', 'default=noprint_wrappers=1:nokey=1', path],
+            capture_output=True, text=True, timeout=30
+        )
+        return round(float(result.stdout.strip()), 1)
+    except Exception:
+        return 0
 
 
 def cmd_scan(job):
@@ -97,7 +106,6 @@ def cmd_scan(job):
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get existing output files
     done_names = set()
     if output_dir.is_dir():
         done_names = {f.stem.lower() for f in output_dir.iterdir() if f.suffix == '.txt'}
@@ -112,14 +120,12 @@ def cmd_scan(job):
         if ext not in ALL_EXTS:
             continue
 
-        # Determine file type
         file_type = 'unknown'
         for t, exts in SUPPORTED_EXTS.items():
             if ext in exts:
                 file_type = t
                 break
 
-        # Check if already transcribed
         if fpath.stem.lower() in done_names:
             out_file = None
             for f in output_dir.iterdir():
@@ -140,7 +146,6 @@ def cmd_scan(job):
                 'size': fpath.stat().st_size,
                 'type': file_type,
             }
-            # Get duration for audio/video
             if file_type in ('audio', 'video'):
                 entry['duration'] = _get_duration(str(fpath))
             pending.append(entry)
@@ -148,51 +153,13 @@ def cmd_scan(job):
     emit({'files': pending, 'done': done})
 
 
-def _get_duration(path):
-    """Get media duration in seconds."""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', path],
-            capture_output=True, text=True, timeout=30
-        )
-        return round(float(result.stdout.strip()), 1)
-    except Exception:
-        return 0
-
-
 def cmd_run(job):
-    """Run transcription with JSON progress output."""
-    import warnings
-    warnings.filterwarnings("ignore")
-    from core.config_loader import PipelineConfig
-
+    """Run transcription by spawning process_v2.py as a subprocess."""
     input_dir = Path(job['input'])
     output_dir = Path(job['output'])
     selected_files = job.get('files', [])
 
-    # Build config
-    config = PipelineConfig()
-    config.source_directory = str(input_dir)
-    config.output_directory = str(output_dir)
-    config.whisper_model = job.get('whisperModel', 'medium')
-    config.whisper_language = job.get('whisperLanguage', '')
-    config.whisper_beam_size = job.get('whisperBeamSize', 1)
-    config.whisper_diarize = job.get('diarize', False)
-    config.whisper_diarize_speakers = job.get('diarizeSpeakers', 0)
-    config.process_audio = job.get('processAudio', True)
-    config.process_videos = job.get('processVideos', True)
-    config.process_pdf = job.get('processPdf', True)
-    config.process_images = job.get('processImages', True)
-    config.process_docx = job.get('processDocx', True)
-    config.process_xlsx = job.get('processXlsx', True)
-    config.process_pptx = job.get('processPptx', True)
-    config.process_txt = job.get('processTxt', True)
-    config.process_csv = job.get('processCsv', False)
-    config.process_rtf = job.get('processRtf', False)
-
-    # If specific files selected, create a temp input dir with only those
+    # If specific files selected, create temp dir with just those
     actual_input = input_dir
     temp_dir = None
     if selected_files:
@@ -202,104 +169,138 @@ def cmd_run(job):
             src = input_dir / fname
             if src.exists():
                 dst = temp_dir / fname
-                # Create symlink or copy
                 try:
                     os.link(str(src), str(dst))
                 except Exception:
                     import shutil
                     shutil.copy2(str(src), str(dst))
         actual_input = temp_dir
-        config.source_directory = str(actual_input)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    emit({'type': 'status', 'message': f'Loading Whisper model ({config.whisper_model})... This takes 10-30 seconds on first run.'})
+    # Write a temp config for process_v2
+    config = {
+        'source_directory': str(actual_input),
+        'output_directory': str(output_dir),
+        'whisper_model': job.get('whisperModel', 'medium'),
+        'whisper_language': job.get('whisperLanguage', ''),
+        'whisper_beam_size': job.get('whisperBeamSize', 1),
+        'whisper_diarize': job.get('diarize', False),
+        'whisper_diarize_speakers': job.get('diarizeSpeakers', 0),
+        'process_audio': job.get('processAudio', True),
+        'process_videos': job.get('processVideos', True),
+        'process_pdf': job.get('processPdf', True),
+        'process_images': job.get('processImages', True),
+        'process_docx': job.get('processDocx', True),
+        'process_xlsx': job.get('processXlsx', True),
+        'process_pptx': job.get('processPptx', True),
+        'process_txt': job.get('processTxt', True),
+        'process_csv': job.get('processCsv', False),
+        'process_rtf': job.get('processRtf', False),
+    }
 
-    # Redirect stdout to stderr so process_v2's ANSI spinners don't pollute our JSON output.
-    # Our emit() writes to _real_stdout which stays clean.
-    import io
-    global _real_stdout
-    _real_stdout = sys.stdout
-    sys.stdout = sys.stderr
+    import tempfile
+    config_file = Path(tempfile.mktemp(suffix='.json', prefix='transcriptor_config_'))
+    config_file.write_text(json.dumps(config), encoding='utf-8')
 
-    import warnings
-    warnings.filterwarnings("ignore")
-    from process_v2 import MaterialProcessor
+    emit({'type': 'status', 'message': f'Loading Whisper model ({config["whisper_model"]})...'})
 
-    processor = MaterialProcessor(config)
-    processor.source_dir = actual_input.resolve()
-    materials = processor.find_materials(actual_input)
+    # Count files to process
+    total = 0
+    for fpath in actual_input.rglob('*'):
+        if fpath.is_file() and fpath.suffix.lower() in ALL_EXTS:
+            # Check if already done
+            out_check = output_dir / (fpath.stem + '.txt')
+            if not out_check.exists():
+                total += 1
 
-    total_files = sum(len(files) for files in materials.values())
-    if total_files == 0:
+    if total == 0:
         emit({'type': 'batch_done', 'processed': 0, 'failed': 0, 'elapsed_seconds': 0})
+        _cleanup(temp_dir, config_file)
         return
 
-    emit({'type': 'status', 'message': f'Found {total_files} files to process'})
+    emit({'type': 'status', 'message': f'Processing {total} files...'})
 
-    # Filter out already processed
-    filtered = {k: [] for k in materials}
-    for file_type, files_list in materials.items():
-        for file_path in files_list:
-            out_path = processor._get_output_path(file_path, output_dir)
-            if not out_path.exists():
-                filtered[file_type].append(file_path)
-
-    remaining = sum(len(f) for f in filtered.values())
-    if remaining == 0:
-        emit({'type': 'batch_done', 'processed': 0, 'failed': 0, 'elapsed_seconds': 0})
-        return
-
-    # Monkey-patch the progress to emit JSON
-    processed_count = [0]
+    # Spawn process_v2.py as subprocess — its ANSI output goes to its own stderr/stdout
+    # We don't pipe its stdout — we don't need it
     start_time = time.time()
-    original_wrapper = processor._process_file_wrapper
 
-    def json_wrapper(file_path, file_type, output_dir_arg):
-        result = original_wrapper(file_path, file_type, output_dir_arg)
-        processed_count[0] += 1
-        elapsed = time.time() - start_time
-        eta = 0
-        if processed_count[0] > 0 and processed_count[0] < remaining:
-            rate = processed_count[0] / elapsed
-            eta = (remaining - processed_count[0]) / rate
+    proc = subprocess.Popen(
+        [VENV_PYTHON, PROCESS_V2, str(actual_input), '--output', str(output_dir), '--config', str(config_file)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=str(BACKEND_DIR),
+        creationflags=0x00004000 if sys.platform == 'win32' else 0,  # BELOW_NORMAL_PRIORITY
+    )
 
-        success = result[0] if result else False
-        emit({
-            'type': 'file_done',
-            'file': file_path.name,
-            'success': success,
-            'done': processed_count[0],
-            'total': remaining,
-            'percent': round(processed_count[0] / remaining * 100, 1),
-            'eta_seconds': round(eta),
-            'elapsed_seconds': round(elapsed, 1),
-        })
-        return result
-
-    processor._process_file_wrapper = json_wrapper
-
+    # Send Enter to skip the preflight prompt
     try:
-        processor.process_all(actual_input, output_dir)
-    except Exception as e:
-        emit({'type': 'error', 'message': str(e)})
-    finally:
-        elapsed = time.time() - start_time
-        stats = processor.stats
-        emit({
-            'type': 'batch_done',
-            'processed': (stats['audio_processed'] + stats['videos_processed'] +
-                         stats['pdfs_processed'] + stats['images_processed'] +
-                         stats['documents_processed']),
-            'failed': stats['errors'],
-            'elapsed_seconds': round(elapsed, 1),
-            'stats': dict(stats),
-        })
+        proc.stdin.write(b'\n')
+        proc.stdin.flush()
+        proc.stdin.close()
+    except Exception:
+        pass
 
-        # Cleanup temp dir
-        if temp_dir and temp_dir.exists():
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
+    # Monitor output directory for new .txt files
+    known_files = {f.name.lower() for f in output_dir.iterdir() if f.suffix == '.txt'} if output_dir.is_dir() else set()
+    processed = 0
+    failed = 0
+
+    while proc.poll() is None:
+        time.sleep(2)
+
+        # Check for new .txt files in output
+        current_files = {f.name.lower() for f in output_dir.iterdir() if f.suffix == '.txt'} if output_dir.is_dir() else set()
+        new_files = current_files - known_files
+
+        for new_file in new_files:
+            processed += 1
+            known_files.add(new_file)
+            elapsed = time.time() - start_time
+            eta = 0
+            if processed > 0 and processed < total:
+                rate = processed / elapsed
+                eta = (total - processed) / rate
+
+            emit({
+                'type': 'file_done',
+                'file': new_file.replace('.txt', ''),
+                'success': True,
+                'done': processed,
+                'total': total,
+                'percent': round(processed / total * 100, 1),
+                'eta_seconds': round(eta),
+                'elapsed_seconds': round(elapsed, 1),
+            })
+
+    elapsed = time.time() - start_time
+
+    # Final check for any files created during the last poll
+    if output_dir.is_dir():
+        final_files = {f.name.lower() for f in output_dir.iterdir() if f.suffix == '.txt'}
+        for new_file in (final_files - known_files):
+            processed += 1
+
+    emit({
+        'type': 'batch_done',
+        'processed': processed,
+        'failed': max(0, total - processed),
+        'elapsed_seconds': round(elapsed, 1),
+    })
+
+    _cleanup(temp_dir, config_file)
+
+
+def _cleanup(temp_dir, config_file):
+    if temp_dir and temp_dir.exists():
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    if config_file and config_file.exists():
+        try:
+            config_file.unlink()
+        except Exception:
+            pass
 
 
 def main():
