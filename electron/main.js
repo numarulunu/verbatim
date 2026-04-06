@@ -61,6 +61,7 @@ function runBridge(args) {
     return spawn(VENV_PYTHON, [BRIDGE, ...args], {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
+        env: { ...process.env, TRANSCRIPTOR_BACKEND: path.join(PROJECT_ROOT, 'backend') },
     });
 }
 

@@ -13,7 +13,9 @@ import subprocess
 import time
 from pathlib import Path
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent / 'backend'
+# Backend dir comes from --backend arg or defaults to relative path (dev mode)
+_default_backend = Path(__file__).resolve().parent.parent / 'backend'
+BACKEND_DIR = Path(os.environ.get('TRANSCRIPTOR_BACKEND', str(_default_backend)))
 VENV_PYTHON = str(BACKEND_DIR / '.venv' / 'Scripts' / 'python.exe')
 PROCESS_V2 = str(BACKEND_DIR / 'process_v2.py')
 
