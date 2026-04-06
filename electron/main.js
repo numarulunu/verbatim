@@ -9,7 +9,7 @@ const readline = require('readline');
 const IS_PACKAGED = app.isPackaged;
 const RESOURCES = path.join(__dirname, 'resources');
 const PROJECT_ROOT = IS_PACKAGED
-    ? 'C:\\Users\\Gaming PC\\Desktop\\Transcriptor v2'
+    ? 'C:/Users/Gaming PC/Desktop/Transcriptor v2'
     : path.join(__dirname, '..');
 const VENV_PYTHON = path.join(PROJECT_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
 const BRIDGE = path.join(IS_PACKAGED ? path.dirname(app.getPath('exe')) : __dirname, 'bridge.py');
