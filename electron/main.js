@@ -169,6 +169,10 @@ ipcMain.on('stop-processing', () => {
         } catch {}
         engineProcess = null;
     }
+    // Also kill any orphaned bridge.py processes
+    try {
+        execSync('taskkill /FI "WINDOWTITLE eq bridge*" /F', { windowsHide: true, stdio: 'ignore' });
+    } catch {}
 });
 
 ipcMain.handle('delete-files', async (_, filePaths) => {

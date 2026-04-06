@@ -38,8 +38,11 @@ for v in SUPPORTED_EXTS.values():
     ALL_EXTS |= v
 
 
+_real_stdout = sys.stdout
+
 def emit(data):
-    print(json.dumps(data, ensure_ascii=False), flush=True)
+    _real_stdout.write(json.dumps(data, ensure_ascii=False) + '\n')
+    _real_stdout.flush()
 
 
 def load_job(job_path):
@@ -211,6 +214,13 @@ def cmd_run(job):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     emit({'type': 'status', 'message': f'Loading Whisper model ({config.whisper_model})... This takes 10-30 seconds on first run.'})
+
+    # Redirect stdout to stderr so process_v2's ANSI spinners don't pollute our JSON output.
+    # Our emit() writes to _real_stdout which stays clean.
+    import io
+    global _real_stdout
+    _real_stdout = sys.stdout
+    sys.stdout = sys.stderr
 
     import warnings
     warnings.filterwarnings("ignore")
