@@ -27,7 +27,6 @@ const dom = {
     queueHeader: $('queueHeader'),
     selectAll: $('selectAll'),
     fileCount: $('fileCount'),
-    btnDeleteOriginals: $('btnDeleteOriginals'),
     fileQueue: $('fileQueue'),
     systemInfo: $('systemInfo'),
     overallProgress: $('overallProgress'),
@@ -176,8 +175,6 @@ function renderFiles() {
     if (totalSize > 0) summary += ` | ${formatSize(totalSize)}`;
     dom.fileCount.textContent = summary;
 
-    // Delete button
-    dom.btnDeleteOriginals.style.display = (completed.length > 0 || alreadyDone.length > 0) ? '' : 'none';
 
     function renderRow(f) {
         const i = f._idx;
@@ -383,30 +380,6 @@ ipc.on('processing-error', (data) => {
     dom.overallProgress.textContent = `Error: ${data.message}`;
 });
 
-// === Delete Originals ===
-
-dom.btnDeleteOriginals.addEventListener('click', async () => {
-    const deletable = files.filter(f => (f.status === 'done' || f.status === 'already_done') && f.path);
-    if (deletable.length === 0) return;
-
-    const names = deletable.map(f => f.name).join('\n');
-    if (!confirm(`Send ${deletable.length} original file(s) to Recycle Bin?\n\n${names}`)) return;
-
-    const paths = deletable.map(f => f.path);
-    const result = await ipc.invoke('delete-files', paths);
-
-    if (result.deleted > 0) {
-        const deletedPaths = new Set(paths);
-        files = files.filter(f => !deletedPaths.has(f.path));
-        renderFiles();
-    }
-
-    if (result.failed && result.failed.length > 0) {
-        dom.overallProgress.textContent = `${result.deleted} deleted, ${result.failed.length} failed`;
-    } else {
-        dom.overallProgress.textContent = `${result.deleted} original(s) sent to Recycle Bin`;
-    }
-});
 
 // === System Detection ===
 

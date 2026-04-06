@@ -210,6 +210,10 @@ def cmd_run(job):
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    emit({'type': 'status', 'message': f'Loading Whisper model ({config.whisper_model})... This takes 10-30 seconds on first run.'})
+
+    import warnings
+    warnings.filterwarnings("ignore")
     from process_v2 import MaterialProcessor
 
     processor = MaterialProcessor(config)
@@ -264,9 +268,6 @@ def cmd_run(job):
         return result
 
     processor._process_file_wrapper = json_wrapper
-
-    # Emit loading status
-    emit({'type': 'status', 'message': f'Loading models ({config.whisper_model})...'})
 
     try:
         processor.process_all(actual_input, output_dir)
