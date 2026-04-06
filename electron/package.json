@@ -37,6 +37,12 @@
       "main.js",
       "preload.js",
       "resources/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "bridge.py",
+        "to": "bridge.py"
+      }
     ]
   },
   "devDependencies": {
