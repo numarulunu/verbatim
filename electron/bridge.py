@@ -227,34 +227,43 @@ def cmd_run(job):
     # We don't pipe its stdout — we don't need it
     start_time = time.time()
 
+    # Create a pre-filled stdin that has Enter already waiting
+    # process_v2 calls input() after preflight — this auto-answers it
+    import tempfile as _tf
+    stdin_file = _tf.TemporaryFile()
+    stdin_file.write(b'\n\n\n')  # Multiple enters in case it asks more than once
+    stdin_file.seek(0)
+
     proc = subprocess.Popen(
         [VENV_PYTHON, PROCESS_V2, str(actual_input), '--output', str(output_dir), '--config', str(config_file)],
-        stdin=subprocess.PIPE,
+        stdin=stdin_file,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         cwd=str(BACKEND_DIR),
         creationflags=0x00004000 if sys.platform == 'win32' else 0,  # BELOW_NORMAL_PRIORITY
     )
 
-    # Send Enter to skip the preflight prompt
-    try:
-        proc.stdin.write(b'\n')
-        proc.stdin.flush()
-        proc.stdin.close()
-    except Exception:
-        pass
-
     # Monitor output directory for new .txt files
     known_files = {f.name.lower() for f in output_dir.iterdir() if f.suffix == '.txt'} if output_dir.is_dir() else set()
     processed = 0
     failed = 0
 
+    last_activity = time.time()
     while proc.poll() is None:
         time.sleep(2)
 
         # Check for new .txt files in output
         current_files = {f.name.lower() for f in output_dir.iterdir() if f.suffix == '.txt'} if output_dir.is_dir() else set()
         new_files = current_files - known_files
+
+        if new_files:
+            last_activity = time.time()
+
+        # Timeout: if no new files for 5 minutes and process still running, kill it
+        if time.time() - last_activity > 300:
+            emit({'type': 'error', 'message': 'Timeout: no progress for 5 minutes'})
+            proc.kill()
+            break
 
         for new_file in new_files:
             processed += 1
