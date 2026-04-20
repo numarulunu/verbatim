@@ -70,43 +70,48 @@ def identify_speakers(
 
     assignments = assign_clusters(cluster_embeddings, teacher, student)
 
-    # Unregistered participants are not in assignments -> bootstrap from the
-    # cluster the registered participant did NOT win.
+    # Unregistered participants -> bootstrap them from orphan clusters. Both
+    # teacher AND student may need bootstrapping on a first-ever run (no prior
+    # library for either), so we handle them in sequence, not if/elif.
     assigned_labels = set(assignments.keys())
-    unassigned_labels = set(cluster_embeddings.keys()) - assigned_labels
-    if unassigned_labels:
-        bootstrap_label = next(iter(unassigned_labels))
-        bootstrap_emb = cluster_embeddings[bootstrap_label]
+    unassigned_labels = list(set(cluster_embeddings.keys()) - assigned_labels)
 
-        if teacher is None:
-            new = bootstrap_new_person(
-                bootstrap_emb,
-                id_=meta.teacher_id,
-                display_name=meta.teacher_id,  # manual correction via enroll.py edit
-                default_role="teacher",
-                first_seen=meta.date,
-            )
-            teacher = new
-            assignments[bootstrap_label] = (new.id, 0.0, "universal")
-            log.warning(
-                "bootstrapped new teacher %r from cluster %s; "
-                "first 3 sessions will require confidence > %.2f or manual confirm",
-                new.id, bootstrap_label, NEW_PERSON_CONFIDENCE_GATE,
-            )
-        elif student is None:
-            new = bootstrap_new_person(
-                bootstrap_emb,
-                id_=meta.student_id,
-                display_name=meta.student_id,
-                default_role="student",
-                first_seen=meta.date,
-            )
-            student = new
-            assignments[bootstrap_label] = (new.id, 0.0, "universal")
-            log.warning(
-                "bootstrapped new student %r from cluster %s",
-                new.id, bootstrap_label,
-            )
+    if teacher is None and unassigned_labels:
+        bootstrap_label = unassigned_labels.pop(0)
+        new = bootstrap_new_person(
+            cluster_embeddings[bootstrap_label],
+            id_=meta.teacher_id,
+            display_name=meta.teacher_id,   # correctable via `enroll.py edit`
+            default_role="teacher",
+            first_seen=meta.date,
+        )
+        teacher = new
+        # Bootstrap confidence is 1.0 by construction — the cluster IS this
+        # person (we just sampled it). The first-3-sessions gate still applies
+        # on future runs when prior library exists.
+        assignments[bootstrap_label] = (new.id, 1.0, "universal")
+        log.warning(
+            "bootstrapped new teacher %r from cluster %s; "
+            "first 3 sessions require confidence > %.2f or manual confirm",
+            new.id, bootstrap_label, NEW_PERSON_CONFIDENCE_GATE,
+        )
+
+    if student is None and unassigned_labels:
+        bootstrap_label = unassigned_labels.pop(0)
+        new = bootstrap_new_person(
+            cluster_embeddings[bootstrap_label],
+            id_=meta.student_id,
+            display_name=meta.student_id,
+            default_role="student",
+            first_seen=meta.date,
+        )
+        student = new
+        assignments[bootstrap_label] = (new.id, 1.0, "universal")
+        log.warning(
+            "bootstrapped new student %r from cluster %s; "
+            "first 3 sessions require confidence > %.2f or manual confirm",
+            new.id, bootstrap_label, NEW_PERSON_CONFIDENCE_GATE,
+        )
 
     # Build {cluster_label: PersonRecord} lookup.
     label_to_person: dict[str, PersonRecord] = {}
@@ -234,7 +239,7 @@ def update_voice_libraries(
     confidence < UPDATE_REJECTION_THRESHOLD.
     """
     from persons.embedder import embed
-    from persons.matcher import person_dir, flag_collision  # noqa: F401
+    from persons.matcher import person_dir  # flag_collision lives in registry, not matcher
 
     per_person_confidences: dict[str, list[float]] = {}
     per_person_regions: dict[str, dict[str, list[np.ndarray]]] = {}
@@ -250,7 +255,11 @@ def update_voice_libraries(
         duration = float(seg["end"]) - float(seg["start"])
         per_person_durations[pid] = per_person_durations.get(pid, 0.0) + duration
         region = seg.get("matched_region") or "speaking"
-        if region not in REGION_LABELS and region not in ("universal", "recent"):
+        # `universal` and `recent` are library-lookup aggregates, not real
+        # vocal regions — we can't accumulate against them here (recent.npy is
+        # (N, 512), shape-incompatible with per-region running mean). Fold them
+        # back to "speaking" for accumulation.
+        if region not in REGION_LABELS:
             region = "speaking"
         start = max(0, int(float(seg["start"]) * sr))
         end = min(len(acapella), int(float(seg["end"]) * sr))

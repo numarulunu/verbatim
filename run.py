@@ -56,7 +56,7 @@ SUPPORTED_EXTS = frozenset((".mp4", ".m4a", ".mp3", ".wav", ".webm", ".ogg", ".f
 # Preflight
 # ---------------------------------------------------------------------------
 
-def preflight() -> None:
+def preflight(skip_disk_check: bool = False) -> None:
     """Validate environment before touching any file."""
     for d in PIPELINE_DIRS:
         d.mkdir(parents=True, exist_ok=True)
@@ -71,10 +71,14 @@ def preflight() -> None:
 
     usage = shutil.disk_usage(str(MATERIAL_DIR.parent))
     free_gb = usage.free / (1024 ** 3)
-    if free_gb < MIN_FREE_DISK_GB:
+    if free_gb < MIN_FREE_DISK_GB and not skip_disk_check:
         raise RuntimeError(
-            f"insufficient disk: {free_gb:.1f} GB free, need {MIN_FREE_DISK_GB} GB"
+            f"insufficient disk: {free_gb:.1f} GB free, need {MIN_FREE_DISK_GB} GB "
+            f"(the 400 GB target sizes the full ~320h backlog; use --skip-disk-check "
+            f"for small test runs)"
         )
+    if skip_disk_check:
+        log.info("disk check skipped (%.1f GB free)", free_gb)
 
     # GPU capability probe — logs a warning if not Pascal, but does not abort
     # (the pipeline will still run, just with potentially wrong compute_type
@@ -265,8 +269,8 @@ def _approximate_overlap_ratio(segments: list[dict]) -> float:
 # Normal mode driver
 # ---------------------------------------------------------------------------
 
-async def orchestrate_normal() -> int:
-    preflight()
+async def orchestrate_normal(skip_disk_check: bool = False) -> int:
+    preflight(skip_disk_check=skip_disk_check)
     inputs = discover_inputs(MATERIAL_DIR)
     inputs = [p for p in inputs if needs_processing(p)]
     if not inputs:
@@ -286,12 +290,19 @@ async def orchestrate_normal() -> int:
             log.error("stage 1 failed for %s: %s", src.name, exc)
     stage1_isolate.teardown_separator()
 
-    # Phase 3-10 per file, GPU-serialized.
+    # Phase 3-10 — sequential per file. The brief allows parallel CPU phases
+    # with a GPU semaphore, but our silero/whisperx/pyannote singletons hold
+    # non-thread-safe internal state. Sequential is correct and plenty fast
+    # for a 320h backlog at ~3-5 min/file.
     gpu_sem = asyncio.Semaphore(1)
-    results = await asyncio.gather(
-        *(_process_one(src, acap, gpu_sem) for src, acap in pairs),
-        return_exceptions=True,
-    )
+    results: list[bool] = []
+    for src, acap in pairs:
+        try:
+            ok_one = await _process_one(src, acap, gpu_sem)
+            results.append(ok_one)
+        except Exception as exc:  # noqa: BLE001 - per-file error containment
+            log.exception("uncaught failure on %s: %s", src.name, exc)
+            results.append(False)
     ok = sum(1 for r in results if r is True)
     log.info("complete: %d ok / %d attempted.", ok, len(results))
     return 0 if ok == len(results) else 1
@@ -302,7 +313,7 @@ async def orchestrate_normal() -> int:
 # ---------------------------------------------------------------------------
 
 async def orchestrate_redo(args: argparse.Namespace) -> int:
-    preflight()
+    preflight(skip_disk_check=args.skip_disk_check)
     from persons import redo as redo_mod
 
     candidates = redo_mod.find_candidates(
@@ -418,6 +429,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="[--redo] redo everything")
     p.add_argument("--dry-run", action="store_true",
                    help="[--redo] list candidates, don't actually run")
+    p.add_argument("--skip-disk-check", action="store_true",
+                   help="Bypass the 400 GB free-disk preflight (use only for small test runs)")
     return p
 
 
@@ -439,7 +452,7 @@ def main() -> None:
     if args.redo:
         rc = asyncio.run(orchestrate_redo(args))
     else:
-        rc = asyncio.run(orchestrate_normal())
+        rc = asyncio.run(orchestrate_normal(skip_disk_check=args.skip_disk_check))
     sys.exit(rc)
 
 

@@ -60,32 +60,29 @@ def isolate_one(source: Path) -> Path:
     source = Path(source)
     target = acapella_path_for(source)
     if target.exists():
-        log.info("acapella exists: %s — skipping stage 1", target.name)
+        log.info("acapella exists: %s - skipping stage 1", target.name)
         return target
 
     separator = _load_separator()
-    # The Separator writes to output_dir; we rename the 'Vocals' stem to our
-    # file_id so downstream stages can resolve it by convention.
     fid = target.stem
-    output_names = {"Vocals": fid}
-    produced = separator.separate(str(source), output_names)
-    if not produced:
-        raise RuntimeError(f"separator produced no outputs for {source}")
 
-    # The vocal stem will be the one whose name matches file_id.
-    vocal_stem = _find_vocal_stem(produced, fid)
-    if vocal_stem != target:
-        # Move into canonical location if the separator placed it elsewhere.
-        vocal_stem.replace(target)
+    # output_names renames the Vocals stem to exactly `{fid}.wav` inside
+    # ACAPELLA_DIR (the separator's output_dir). No post-hoc rename needed.
+    separator.separate(str(source), {"Vocals": fid})
 
-    # Delete the instrumental / secondary stems — they waste disk (~60 MB/10min each).
-    for p in produced:
-        p_path = Path(p)
-        if p_path.exists() and p_path != target:
-            try:
-                p_path.unlink()
-            except OSError as exc:
-                log.warning("could not remove secondary stem %s: %s", p_path, exc)
+    if not target.exists():
+        raise RuntimeError(
+            f"separator ran but {target.name!r} was not produced under {ACAPELLA_DIR}"
+        )
+
+    # Delete every OTHER file the separator wrote for this source (Instrumental
+    # stem, model-name-suffixed duplicates, etc.). Match on fid prefix so we
+    # don't touch other sessions' outputs.
+    for leftover in ACAPELLA_DIR.glob(f"{fid}_*"):
+        try:
+            leftover.unlink()
+        except OSError as exc:
+            log.warning("could not remove secondary stem %s: %s", leftover.name, exc)
 
     _apply_post_gate(target)
     return target
@@ -106,16 +103,6 @@ def isolate_batch(sources: list[Path]) -> list[Path]:
             # One bad file does not abort the batch (brief §3).
             log.error("stage 1 failed for %s: %s", src, exc)
     return outputs
-
-
-def _find_vocal_stem(produced: list, file_id: str) -> Path:
-    """Resolve the vocals stem out of what the separator returned."""
-    for p in produced:
-        path = Path(p)
-        if file_id in path.stem or "vocals" in path.stem.lower():
-            return path
-    # Fallback — first stem.
-    return Path(produced[0])
 
 
 def _apply_post_gate(acapella: Path) -> None:

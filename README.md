@@ -15,7 +15,7 @@ in one coherent database that sharpens with every run.
 
 ```bash
 # 1. Torch CUDA 11.8 wheels (manual step — CUDA-specific)
-pip install torch==2.3.1+cu118 torchaudio==2.3.1+cu118 \
+pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 torchaudio==2.5.1+cu118 \
     --index-url https://download.pytorch.org/whl/cu118
 
 # 2. Pipeline deps

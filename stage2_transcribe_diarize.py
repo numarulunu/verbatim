@@ -52,11 +52,88 @@ _diarizer = None                # whisperx.DiarizationPipeline
 # Phase 5 — ASR (faster-whisper, batched)
 # ---------------------------------------------------------------------------
 
+def _register_cuda_dll_paths() -> None:
+    """
+    Windows: CTranslate2 4.x is built against CUDA 12 runtime + cuDNN 8, but
+    ships no DLLs itself. Torch's cu118 wheels provide CUDA 11, which doesn't
+    satisfy CTranslate2. We install the needed CUDA 12 runtime components via
+    pip (`nvidia-cublas-cu12`, `nvidia-cuda-runtime-cu12`, `nvidia-cudnn-cu11`
+    — the last one still ships the cuDNN 8 DLLs CTranslate2 expects) and
+    register their bin directories here.
+
+    `os.add_dll_directory` alone is NOT sufficient — CTranslate2's C++ loader
+    doesn't walk add_dll_directory entries for transitive deps. Belt-and-braces:
+      1. add_dll_directory (for direct LoadLibrary calls)
+      2. prepend to PATH env var (for any LoadLibrary that respects PATH)
+      3. explicit ctypes.CDLL preload (pulls the DLLs into the process so
+         later LoadLibraryA resolves them by name already-loaded)
+    """
+    import ctypes
+    import os
+    import sys
+    if sys.platform != "win32":
+        return
+
+    # (package_name, subdir, preload_order). First-hit-wins on name collisions.
+    wanted: list[tuple[str, str, tuple[str, ...]]] = [
+        ("nvidia.cuda_runtime", "bin", ("cudart64_12.dll",)),
+        ("nvidia.cublas",       "bin", ("cublas64_12.dll", "cublasLt64_12.dll")),
+        ("nvidia.cudnn",        "bin", (
+            "cudnn64_8.dll",
+            "cudnn_ops_infer64_8.dll",
+            "cudnn_ops_train64_8.dll",
+            "cudnn_cnn_infer64_8.dll",
+            "cudnn_cnn_train64_8.dll",
+            "cudnn_adv_infer64_8.dll",
+            "cudnn_adv_train64_8.dll",
+        )),
+    ]
+    total_preloaded = 0
+    for mod_name, subdir, preload_order in wanted:
+        try:
+            mod = __import__(mod_name, fromlist=["__path__"])
+        except ImportError:
+            log.warning("missing runtime: %s - install via pip", mod_name)
+            continue
+        # nvidia.* sub-packages are namespace packages: __file__ is None,
+        # __path__ holds the directory.
+        mod_path = getattr(mod, "__file__", None)
+        if mod_path is None:
+            paths = list(getattr(mod, "__path__", []))
+            if not paths:
+                log.warning("%s has neither __file__ nor __path__", mod_name)
+                continue
+            mod_path = paths[0]
+            bin_dir = Path(mod_path) / subdir
+        else:
+            bin_dir = Path(mod_path).parent / subdir
+        if not bin_dir.is_dir():
+            log.warning("%s expected at %s but not found", mod_name, bin_dir)
+            continue
+        os.add_dll_directory(str(bin_dir))
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+        for dll_name in preload_order:
+            p = bin_dir / dll_name
+            if not p.exists():
+                continue
+            try:
+                ctypes.CDLL(str(p))
+                total_preloaded += 1
+            except OSError as exc:
+                log.warning("ctypes preload failed for %s: %s", dll_name, exc)
+    log.info("registered CUDA/cuDNN/cuBLAS (%d DLLs preloaded)", total_preloaded)
+
+
+# Backwards-compat alias — keep existing callers wired.
+_register_cudnn_dll_path = _register_cuda_dll_paths
+
+
 def load_whisper():
     """Lazy-instantiate the faster-whisper batched pipeline. Singleton."""
     global _whisper_pipeline
     if _whisper_pipeline is not None:
         return _whisper_pipeline
+    _register_cuda_dll_paths()
     from faster_whisper import BatchedInferencePipeline, WhisperModel
 
     model = WhisperModel(
@@ -87,8 +164,15 @@ def transcribe(
     """
     pipe = load_whisper()
     prompt = INITIAL_PROMPTS.get(language, "")
+    # faster-whisper 1.1.x expects clip_timestamps as a list of dicts with
+    # `start` / `end` keys carrying SAMPLE indices (ints), not seconds. Silero
+    # returns seconds when return_seconds=True, so convert at the boundary.
     clip_spans = (
-        [(float(s["start"]), float(s["end"])) for s in vad_timestamps]
+        [
+            {"start": int(s["start"] * DECODE_SAMPLE_RATE),
+             "end":   int(s["end"]   * DECODE_SAMPLE_RATE)}
+            for s in vad_timestamps
+        ]
         if vad_timestamps
         else None
     )
@@ -185,8 +269,73 @@ def align(
 # Phase 7 — pyannote diarization (wrapped by WhisperX)
 # ---------------------------------------------------------------------------
 
+_hf_hub_patched = False
+
+
+def _patch_hf_hub_use_auth_token() -> None:
+    """
+    pyannote.audio 3.3.2 passes `use_auth_token=` down to
+    `huggingface_hub.hf_hub_download`, but huggingface_hub >=1.x dropped the
+    deprecated alias in favour of `token=`. This shim accepts the old kwarg
+    and forwards as `token=`.
+
+    Must patch EVERYWHERE the symbol has already been bound: the source
+    module PLUS any module that did `from huggingface_hub import hf_hub_download`
+    before our code runs (whisperx transitively imports pyannote.audio which
+    does exactly that). Walk sys.modules and replace every matching attribute.
+    """
+    global _hf_hub_patched
+    if _hf_hub_patched:
+        return
+    import sys
+    import huggingface_hub
+
+    orig = huggingface_hub.hf_hub_download
+
+    def _shim(*args, **kwargs):
+        if "use_auth_token" in kwargs:
+            kwargs.setdefault("token", kwargs.pop("use_auth_token"))
+        return orig(*args, **kwargs)
+
+    replaced = 0
+    huggingface_hub.hf_hub_download = _shim
+    replaced += 1
+    # The implementation module (huggingface_hub.file_download) — patch both.
+    try:
+        import huggingface_hub.file_download as fd
+        if getattr(fd, "hf_hub_download", None) is orig:
+            fd.hf_hub_download = _shim
+            replaced += 1
+    except ImportError:
+        pass
+    # Every module that did `from huggingface_hub import hf_hub_download`
+    # before now will have a stale reference to the original — rebind them.
+    for mod in list(sys.modules.values()):
+        if mod is None:
+            continue
+        try:
+            if getattr(mod, "hf_hub_download", None) is orig:
+                mod.hf_hub_download = _shim
+                replaced += 1
+        except Exception:  # noqa: BLE001 — some modules raise on attribute access
+            continue
+
+    _hf_hub_patched = True
+    log.info(
+        "patched hf_hub_download (use_auth_token -> token) in %d module(s)",
+        replaced,
+    )
+
+
 def load_diarizer():
-    """Lazy-instantiate whisperx.DiarizationPipeline (pyannote-3.1 inside)."""
+    """
+    Lazy-instantiate the pyannote 3.1 speaker-diarization pipeline directly.
+
+    We skip `whisperx.diarize.DiarizationPipeline` because it uses the old
+    `use_auth_token=` kwarg. pyannote.audio 3.3.2 still uses that kwarg in
+    its own API, so we pass it as-is and let the hf_hub shim translate
+    downstream.
+    """
     global _diarizer
     if _diarizer is not None:
         return _diarizer
@@ -194,28 +343,43 @@ def load_diarizer():
         raise RuntimeError(
             "HUGGINGFACE_TOKEN / HF_TOKEN must be set for pyannote diarization"
         )
-    from whisperx.diarize import DiarizationPipeline
+    _patch_hf_hub_use_auth_token()
+    import torch
+    from pyannote.audio import Pipeline
 
-    _diarizer = DiarizationPipeline(
-        model_name=DIARIZATION_MODEL,
-        use_auth_token=HF_TOKEN,
-        device=WHISPER_DEVICE,
-    )
+    _diarizer = Pipeline.from_pretrained(DIARIZATION_MODEL, use_auth_token=HF_TOKEN)
+    if torch.cuda.is_available() and WHISPER_DEVICE == "cuda":
+        _diarizer.to(torch.device("cuda"))
     log.info("loaded diarizer %s on %s", DIARIZATION_MODEL, WHISPER_DEVICE)
     return _diarizer
 
 
 def diarize(audio: "np.ndarray"):
     """
-    Run diarization hard-clamped to 2 speakers. Returns whisperx's
-    diarize DataFrame (start, end, speaker) used by assign_word_speakers.
+    Run diarization hard-clamped to 2 speakers. Returns a pandas DataFrame
+    with columns {start, end, speaker} — the shape `assign_word_speakers`
+    expects. We build it from pyannote's Annotation output.
     """
+    import pandas as pd
+    import torch
+
     pipeline = load_diarizer()
-    return pipeline(
-        audio,
+    audio_dict = {
+        "waveform": torch.from_numpy(audio).float().unsqueeze(0),
+        "sample_rate": 16_000,
+    }
+    annotation = pipeline(
+        audio_dict,
         min_speakers=MIN_SPEAKERS,
         max_speakers=MAX_SPEAKERS,
     )
+    rows = [
+        {"start": float(segment.start),
+         "end":   float(segment.end),
+         "speaker": str(speaker)}
+        for segment, _, speaker in annotation.itertracks(yield_label=True)
+    ]
+    return pd.DataFrame(rows, columns=["start", "end", "speaker"])
 
 
 def attach_speaker_labels(segments: list[dict], diarize_segments) -> list[dict]:

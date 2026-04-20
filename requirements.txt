@@ -1,8 +1,9 @@
 # Vocality ASR — pipeline dependencies.
 #
-# torch + torchaudio are installed manually (CUDA-specific wheel for 1080 Ti):
-#   pip install torch==2.3.1+cu118 torchaudio==2.3.1+cu118 \
+# torch + torchvision + torchaudio installed manually (CUDA-specific for 1080 Ti):
+#   pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 torchaudio==2.5.1+cu118 \
 #       --index-url https://download.pytorch.org/whl/cu118
+# (torch 2.5.1 is the last Pascal-friendly build compatible with transformers 5.x.)
 #
 # The rest installs via `pip install -r requirements.txt`.
 

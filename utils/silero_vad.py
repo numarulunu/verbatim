@@ -40,13 +40,17 @@ def load_model():
     global _model
     if _model is not None:
         return _model
+    # Per silero-vad README: single-thread inference is the recommended path.
+    # Multi-threading this CPU model causes intermittent RNN state corruption
+    # (observed as `select(): index 1 out of range` crashes on certain clips).
+    import torch
+    torch.set_num_threads(1)
     try:
         from silero_vad import load_silero_vad
         _model = load_silero_vad()
         log.info("loaded silero-vad via pip package")
         return _model
     except ImportError:
-        import torch
         _model, _ = torch.hub.load(
             repo_or_dir="snakers4/silero-vad",
             model="silero_vad",
@@ -68,6 +72,11 @@ def speech_timestamps(audio: "np.ndarray", sr: int = 16000) -> list[dict]:
     from silero_vad import get_speech_timestamps
 
     model = load_model()
+    # Reset the model's internal RNN state between files so residual state from
+    # a previous clip doesn't corrupt this one's pass.
+    reset = getattr(model, "reset_states", None)
+    if callable(reset):
+        reset()
     wav = torch.from_numpy(audio).float() if not hasattr(audio, "dim") else audio
     raw = get_speech_timestamps(
         wav,
