@@ -1,0 +1,30 @@
+{
+  "language": "en",
+  "notes": "Music-theory + vocal pedagogy terminology. Expand with corrections observed in polish passes.",
+  "terms": {
+    "passaggio":         ["passagio", "passagio", "pasaggio"],
+    "appoggio":          ["apogio", "appogio"],
+    "messa di voce":     ["messa de voce", "mesa di voce"],
+    "sotto voce":        ["soto voce"],
+    "tessitura":         ["tesitura", "tessatura"],
+    "fach":              ["fach", "fahk"],
+    "bel canto":         ["belcanto"],
+    "coloratura":        ["coloratura", "coloratora"],
+    "squillo":           ["squilo", "skwillo"],
+    "chiaroscuro":       ["kiaroscuro", "chiaro-oscuro"],
+    "portamento":        ["portamento", "portamentto"],
+    "legato":            ["legato", "legatto"],
+    "staccato":          ["stacato", "staccatto"],
+    "marcato":           ["markato"],
+    "falsetto":          ["falsetto", "falceto"],
+    "head voice":        ["head-voice", "headvoice"],
+    "chest voice":       ["chest-voice", "chestvoice"],
+    "mixed voice":       ["mix voice", "mixt voice"],
+    "formant":           ["formant", "formatt"],
+    "diaphragm":         ["diaphram", "diafram"],
+    "larynx":            ["larinx", "laryn"],
+    "vocal fold":        ["vocal chord", "vocal cord"],
+    "onset":             ["onset", "on-set"],
+    "register":          ["register", "registre"]
+  }
+}

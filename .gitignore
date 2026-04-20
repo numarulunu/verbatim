@@ -1,26 +1,53 @@
-audio_cache/
-Transcriptions/
-Material/
-.venv/
+# --- Python ---
 __pycache__/
 *.pyc
+*.pyo
+.venv/
 venv/
+*.egg-info/
+.pytest_cache/
+
+# --- Environments / secrets ---
 .env
-*.log
+
+# --- Legacy (pre-refactor) ---
+audio_cache/
+Transcriptions/
+
+# --- Pipeline intermediates (deliberate — not temp) ---
+01_acapella/
+02_raw_json/
+03_polished/
+_voiceprints/
+_logs/
+corpus.json
+session_map.json
+
+# --- Build / dist ---
 dist/
 build/
-*.egg-info/
 
-# Binary artifacts
+# --- Binary assets (source media lives in Material/, never committed) ---
+Material/
 *.mp4
 *.m4a
 *.mp3
+*.wav
+*.webm
+*.ogg
+*.flac
 *.dll
 *.lib
 *.pyd
 *.exe
 
-# OS files
+# --- Atomic-write orphans (leftover from crashes) ---
+*.tmp
+
+# --- Logs ---
+*.log
+
+# --- OS ---
 .DS_Store
 Thumbs.db
 desktop.ini

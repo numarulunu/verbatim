@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "tuning",
+  "required_buckets": ["clean", "overlap", "degraded"],
+  "thresholds": {
+    "max_wer": 0.25,
+    "min_speaker_label_accuracy": 0.85,
+    "max_degraded_rate": 0.25
+  },
+  "items": [
+    {
+      "id": "tune-clean-001",
+      "bucket": "clean",
+      "audio": "audio/tune-clean-001.wav",
+      "reference": "references/tune-clean-001.ref.json"
+    },
+    {
+      "id": "tune-overlap-001",
+      "bucket": "overlap",
+      "audio": "audio/tune-overlap-001.wav",
+      "reference": "references/tune-overlap-001.ref.json"
+    },
+    {
+      "id": "tune-degraded-001",
+      "bucket": "degraded",
+      "audio": "audio/tune-degraded-001.wav",
+      "reference": "references/tune-degraded-001.ref.json"
+    }
+  ]
+}

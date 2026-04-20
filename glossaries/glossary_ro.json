@@ -1,0 +1,25 @@
+{
+  "language": "ro",
+  "notes": "Terminologie canto românesc. Extinde cu corecții observate în polish.",
+  "terms": {
+    "pasagio":           ["pasaj", "pasagiu", "passagio"],
+    "apodgio":           ["apogio", "appoggio"],
+    "tesitură":          ["tesitura", "tessitura"],
+    "voce di petto":     ["voce di peto"],
+    "voce di testa":     ["voce di testa"],
+    "falsetto":          ["falseto", "falceto"],
+    "solfegiu":          ["solfegiu", "solfejiu"],
+    "formantă":          ["formanta"],
+    "registru vocal":    ["registru", "register"],
+    "acut":              ["acut"],
+    "mediu":             ["mediu"],
+    "grav":              ["grav"],
+    "legato":            ["legato"],
+    "staccato":          ["stacato"],
+    "diafragmă":         ["diafragma"],
+    "laringe":           ["laringe", "larinje"],
+    "corzi vocale":      ["corzi vocale", "corzile vocale"],
+    "sunet":             ["sunet"],
+    "interval":          ["interval"]
+  }
+}

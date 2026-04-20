@@ -1,14 +1,41 @@
-pytesseract>=0.3.10
-Pillow>=10.0.0
-PyMuPDF>=1.23.0
-python-docx>=1.1.0
-openpyxl>=3.1.0
-python-pptx>=0.6.21
-striprtf>=0.0.26
-xlrd<2.0.0
-opencv-python>=4.8.0
-numpy>=1.24.0
-psutil>=5.9.0
-faster-whisper>=1.1.0
-flask>=3.0.0
-flask-cors>=4.0.0
+# Vocality ASR — pipeline dependencies.
+#
+# torch + torchaudio are installed manually (CUDA-specific wheel for 1080 Ti):
+#   pip install torch==2.3.1+cu118 torchaudio==2.3.1+cu118 \
+#       --index-url https://download.pytorch.org/whl/cu118
+#
+# The rest installs via `pip install -r requirements.txt`.
+
+# --- ASR ---
+faster-whisper>=1.0.0
+ctranslate2>=4.0.0
+whisperx>=3.1.0                  # WhisperX + wav2vec2 alignment
+
+# --- Speaker stack ---
+pyannote.audio>=3.1,<4.0
+pyannote.metrics>=3.2
+silero-vad>=5.0
+
+# --- Vocal isolation ---
+audio-separator[gpu]>=0.22.0     # MelBand Roformer wrapper
+
+# --- Pitch / audio ---
+librosa>=0.10
+pyworld>=0.3.4
+soundfile>=0.12
+numpy>=1.26,<2.0
+
+# --- LLM polish ---
+anthropic>=0.40.0                # only when POLISH_ENGINE = "api"
+
+# --- QA / benchmarking ---
+jiwer>=3.0                       # WER / CER
+scipy>=1.12                      # diarization metrics
+
+# --- Utilities ---
+psutil>=5.9                      # CPU affinity pinning
+tqdm>=4.66
+pynvml>=11.5                     # GPU compute-capability probe
+
+# --- Test ---
+pytest>=8.0

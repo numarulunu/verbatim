@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "kind": "holdout",
+  "required_buckets": ["clean", "overlap", "degraded"],
+  "thresholds": {
+    "max_wer": 0.25,
+    "min_speaker_label_accuracy": 0.85,
+    "max_degraded_rate": 0.25
+  },
+  "items": [
+    {
+      "id": "holdout-clean-001",
+      "bucket": "clean",
+      "audio": "audio/holdout-clean-001.wav",
+      "reference": "references/holdout-clean-001.ref.json"
+    },
+    {
+      "id": "holdout-overlap-001",
+      "bucket": "overlap",
+      "audio": "audio/holdout-overlap-001.wav",
+      "reference": "references/holdout-overlap-001.ref.json"
+    },
+    {
+      "id": "holdout-degraded-001",
+      "bucket": "degraded",
+      "audio": "audio/holdout-degraded-001.wav",
+      "reference": "references/holdout-degraded-001.ref.json"
+    }
+  ]
+}
