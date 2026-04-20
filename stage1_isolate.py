@@ -1,34 +1,146 @@
 """
 Stage 1 — vocal isolation.
 
-Uses `audio-separator` with MelBand Roformer to strip the heavy background
-piano that runs through every vocal lesson. Output is saved to
-ACAPELLA_DIR/<file_id>.wav. Idempotent: skips files whose acapella already
-exists.
+Wraps `audio-separator` + MelBand Roformer. Output is written to
+ACAPELLA_DIR/<file_id>.wav. Idempotent: files whose acapella already exists
+are skipped.
 
-Post-separation: -40 dB spectral gate to kill residual harmonic ghosts that
-would otherwise trigger Whisper hallucinations.
+Post-separation we apply a spectral gate (utils.audio_qc.spectral_gate) to
+kill residual harmonic ghosts under SPECTRAL_GATE_DB — those cause Whisper
+hallucinations on sustained sung regions over piano.
+
+VRAM teardown via `teardown_separator()` MUST run before stage2 touches the
+GPU. MelBand Roformer holds ~4 GB on the 1080 Ti and will OOM whisper if
+left in memory.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
+from config import ACAPELLA_DIR, SEPARATOR_MODEL, SPECTRAL_GATE_DB
+from filename_parser import file_id as fileid_from_meta
+from filename_parser import parse as parse_filename
+from utils.audio_qc import spectral_gate
 
-def isolate_batch(sources: list[Path]) -> list[Path]:
-    """Run vocal isolation over a batch; return output paths. Tears down VRAM on completion."""
-    raise NotImplementedError
+log = logging.getLogger(__name__)
+
+_separator = None
+
+
+def _load_separator():
+    global _separator
+    if _separator is not None:
+        return _separator
+    from audio_separator.separator import Separator
+
+    ACAPELLA_DIR.mkdir(parents=True, exist_ok=True)
+    _separator = Separator(
+        output_dir=str(ACAPELLA_DIR),
+        output_format="WAV",
+        sample_rate=16_000,
+    )
+    _separator.load_model(SEPARATOR_MODEL)
+    log.info("loaded audio-separator (%s)", SEPARATOR_MODEL)
+    return _separator
+
+
+def acapella_path_for(source: Path) -> Path:
+    """Return the destination acapella path for a given source."""
+    fid = fileid_from_meta(parse_filename(source))
+    return ACAPELLA_DIR / f"{fid}.wav"
 
 
 def isolate_one(source: Path) -> Path:
-    """Single-file vocal isolation. Skips if acapella already exists."""
-    raise NotImplementedError
+    """
+    Vocal-isolate one source. Skips the separator call if the output exists.
+
+    Returns the path to the acapella WAV.
+    """
+    source = Path(source)
+    target = acapella_path_for(source)
+    if target.exists():
+        log.info("acapella exists: %s — skipping stage 1", target.name)
+        return target
+
+    separator = _load_separator()
+    # The Separator writes to output_dir; we rename the 'Vocals' stem to our
+    # file_id so downstream stages can resolve it by convention.
+    fid = target.stem
+    output_names = {"Vocals": fid}
+    produced = separator.separate(str(source), output_names)
+    if not produced:
+        raise RuntimeError(f"separator produced no outputs for {source}")
+
+    # The vocal stem will be the one whose name matches file_id.
+    vocal_stem = _find_vocal_stem(produced, fid)
+    if vocal_stem != target:
+        # Move into canonical location if the separator placed it elsewhere.
+        vocal_stem.replace(target)
+
+    # Delete the instrumental / secondary stems — they waste disk (~60 MB/10min each).
+    for p in produced:
+        p_path = Path(p)
+        if p_path.exists() and p_path != target:
+            try:
+                p_path.unlink()
+            except OSError as exc:
+                log.warning("could not remove secondary stem %s: %s", p_path, exc)
+
+    _apply_post_gate(target)
+    return target
 
 
-def spectral_gate(wav_path: Path, floor_db: float) -> None:
-    """In-place spectral gate: zero bins below floor_db. Kills harmonic ghosts."""
-    raise NotImplementedError
+def isolate_batch(sources: list[Path]) -> list[Path]:
+    """
+    Vocal-isolate many sources sequentially (model stays loaded).
+
+    Returns the list of output paths, in the same order as `sources`. Files
+    whose acapella already exists are included in the result without re-running.
+    """
+    outputs: list[Path] = []
+    for src in sources:
+        try:
+            outputs.append(isolate_one(src))
+        except Exception as exc:  # noqa: BLE001
+            # One bad file does not abort the batch (brief §3).
+            log.error("stage 1 failed for %s: %s", src, exc)
+    return outputs
+
+
+def _find_vocal_stem(produced: list, file_id: str) -> Path:
+    """Resolve the vocals stem out of what the separator returned."""
+    for p in produced:
+        path = Path(p)
+        if file_id in path.stem or "vocals" in path.stem.lower():
+            return path
+    # Fallback — first stem.
+    return Path(produced[0])
+
+
+def _apply_post_gate(acapella: Path) -> None:
+    """Apply the SPECTRAL_GATE_DB cleanup in place, via soundfile round-trip."""
+    import numpy as np
+    import soundfile as sf
+
+    audio, sr = sf.read(str(acapella), dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1).astype(np.float32)
+    gated = spectral_gate(audio, sr=sr, floor_db=SPECTRAL_GATE_DB)
+    sf.write(str(acapella), gated, sr, subtype="PCM_16")
 
 
 def teardown_separator() -> None:
-    """Release VRAM held by the separator model before next GPU stage."""
-    raise NotImplementedError
+    """Release the separator and its VRAM. Must run before stage 2 starts."""
+    global _separator
+    if _separator is None:
+        return
+    _separator = None
+    try:
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass

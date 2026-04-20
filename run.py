@@ -1,67 +1,446 @@
 """
 Vocality ASR — asyncio orchestrator.
 
-Drives the 10-phase pipeline end-to-end. Supports resumable normal runs and
-`--redo` mode for retroactive reprocessing as the voiceprint database matures.
+Normal mode:
+  1. preflight (disk, HF token, ffmpeg, GPU capability)
+  2. discover inputs in MATERIAL_DIR
+  3. stage 1: batch vocal isolation (releases VRAM when done)
+  4. per-file (asyncio, GPU serialized via Semaphore):
+     - decode to 16 kHz mono float32
+     - silero VAD pre-filter
+     - stage 2: whisper transcribe + wav2vec2 align + pyannote diarize
+     - stage 2b: cluster embeddings
+     - stage 3: identify + verify + polish + update voice libs + write
 
-Phases (see brief §6):
-  1  vocal isolation          (stage1_isolate)
-  2  session-metadata extract (filename_parser)
-  3  pre-VAD                  (utils.silero_vad)
-  4  CPU decode               (decode_worker)
-  5  ASR                      (stage2_transcribe_diarize)
-  6  alignment                (stage2_transcribe_diarize)
-  7  diarization              (stage2_transcribe_diarize)
-  8  person identification    (stage3_postprocess + persons.matcher/verifier)
-  9  polish                   (persons.polish_engine)
- 10  corpus index update      (persons.corpus)
-
-GPU work is serialized via asyncio.Semaphore(1). CPU work runs through a
-ProcessPoolExecutor pinned to P-cores.
+--redo mode:
+  1. find candidates via persons.redo (threshold / student / teacher /
+     confidence-below / after / all)
+  2. for each candidate: reuse cached acapella + raw_json, re-run
+     identification + polish + corpus update only
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import logging
+import shutil
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Any
+
+from config import (
+    ACAPELLA_DIR,
+    HF_TOKEN,
+    LOG_DIR,
+    MATERIAL_DIR,
+    MIN_FREE_DISK_GB,
+    PIPELINE_DIRS,
+    POLISH_ENGINE,
+    POLISHED_DIR,
+    RAW_JSON_DIR,
+    REDO_CONFIDENCE_FLOOR,
+    REDO_THRESHOLD_SESSIONS,
+)
+from filename_parser import FilenameParseError, file_id as fileid_from_meta, parse as parse_filename
+from hw_clamp import pin_to_p_cores, verify_cuda_compute_capability
+from utils.atomic_write import atomic_write_json
+
+log = logging.getLogger(__name__)
+
+SUPPORTED_EXTS = frozenset((".mp4", ".m4a", ".mp3", ".wav", ".webm", ".ogg", ".flac"))
 
 
-async def orchestrate(inputs: Iterable[Path], redo: bool = False) -> None:
-    """Main async entrypoint. Runs all 10 phases across every input."""
-    raise NotImplementedError
-
-
-def discover_inputs(material_dir: Path) -> list[Path]:
-    """Walk MATERIAL_DIR for audio/video sources matching supported extensions."""
-    raise NotImplementedError
-
+# ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
 
 def preflight() -> None:
-    """Validate disk space, GPU availability, HF_TOKEN, ffmpeg on PATH."""
-    raise NotImplementedError
+    """Validate environment before touching any file."""
+    for d in PIPELINE_DIRS:
+        d.mkdir(parents=True, exist_ok=True)
+
+    if not HF_TOKEN:
+        raise RuntimeError("HUGGINGFACE_TOKEN / HF_TOKEN must be set")
+
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("ffmpeg not found on PATH (winget install Gyan.FFmpeg)")
+    if shutil.which("ffprobe") is None:
+        raise RuntimeError("ffprobe not found on PATH")
+
+    usage = shutil.disk_usage(str(MATERIAL_DIR.parent))
+    free_gb = usage.free / (1024 ** 3)
+    if free_gb < MIN_FREE_DISK_GB:
+        raise RuntimeError(
+            f"insufficient disk: {free_gb:.1f} GB free, need {MIN_FREE_DISK_GB} GB"
+        )
+
+    # GPU capability probe — logs a warning if not Pascal, but does not abort
+    # (the pipeline will still run, just with potentially wrong compute_type
+    # choice on newer cards — see hw_clamp docstring).
+    try:
+        verify_cuda_compute_capability()
+    except RuntimeError as exc:
+        log.warning("GPU check failed: %s", exc)
+
+    pin_to_p_cores()
 
 
-def select_redo_candidates(
-    threshold: int | None = None,
-    student: str | None = None,
-    teacher: str | None = None,
-    confidence_below: float | None = None,
-    after: str | None = None,
-    redo_all: bool = False,
-) -> list[Path]:
-    """Delegate to persons.redo for stale-DB-state candidate detection."""
-    raise NotImplementedError
+# ---------------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------------
 
+def discover_inputs(material_dir: Path) -> list[Path]:
+    """Walk MATERIAL_DIR recursively for supported-extension audio/video files."""
+    if not material_dir.exists():
+        return []
+    results: list[Path] = []
+    for p in sorted(material_dir.rglob("*")):
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS:
+            results.append(p)
+    return results
+
+
+def needs_processing(source: Path) -> bool:
+    """True if no polished transcript exists for this source yet."""
+    try:
+        meta = parse_filename(source)
+    except FilenameParseError:
+        return False
+    fid = fileid_from_meta(meta)
+    return not (POLISHED_DIR / f"{fid}.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Normal-mode pipeline per file
+# ---------------------------------------------------------------------------
+
+async def _process_one(
+    source: Path,
+    acapella: Path,
+    gpu_sem: asyncio.Semaphore,
+) -> bool:
+    """Return True on success. Errors are logged and contained."""
+    try:
+        meta = parse_filename(source)
+    except FilenameParseError as exc:
+        log.error("skipping %s: %s", source.name, exc)
+        return False
+    fid = fileid_from_meta(meta)
+
+    try:
+        # Phases 3, 4 — CPU-only, run off the GPU semaphore.
+        audio = await asyncio.to_thread(_decode_acapella, acapella)
+        vad_spans = await asyncio.to_thread(_run_vad, audio)
+
+        # Phases 5, 6, 7 — GPU-serialized.
+        async with gpu_sem:
+            labeled, cluster_emb = await asyncio.to_thread(
+                _transcribe_align_diarize, audio, meta.language, vad_spans
+            )
+
+        # Phases 8, 8b, 9, 10 — CPU + LLM.
+        await asyncio.to_thread(
+            _finalize, source, acapella, audio, labeled, cluster_emb, meta, fid,
+        )
+        log.info("done: %s", fid)
+        return True
+    except Exception as exc:  # noqa: BLE001 — orchestrator must contain per-file errors
+        log.exception("failed: %s -> %s", fid, exc)
+        return False
+
+
+def _decode_acapella(acapella: Path):
+    import soundfile as sf
+    audio, sr = sf.read(str(acapella), dtype="float32")
+    if audio.ndim > 1:
+        import numpy as np
+        audio = audio.mean(axis=1).astype(np.float32)
+    if sr != 16000:
+        # Resample if the acapella wasn't written at 16 k.
+        import numpy as np
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000).astype(np.float32)
+    return audio
+
+
+def _run_vad(audio):
+    from utils import silero_vad
+    return silero_vad.speech_timestamps(audio, sr=16000)
+
+
+def _transcribe_align_diarize(audio, language: str, vad_spans):
+    import stage2_transcribe_diarize as st2
+
+    raw = st2.transcribe(audio, language=language, vad_timestamps=vad_spans)
+    aligned = st2.align(audio, raw["segments"], language)
+    diar = st2.diarize(audio)
+    labeled = st2.attach_speaker_labels(aligned, diar)
+    cluster_emb = st2.cluster_embeddings_from_segments(labeled, audio)
+    return labeled, cluster_emb
+
+
+def _finalize(
+    source: Path,
+    acapella: Path,
+    audio,
+    labeled_segments: list[dict],
+    cluster_emb: dict[str, Any],
+    meta,
+    fid: str,
+) -> None:
+    import stage3_postprocess as st3
+
+    identified, label_to_person = st3.identify_speakers(
+        labeled_segments, cluster_emb, audio, 16000, meta,
+    )
+    verified = st3.run_verification(
+        identified, cluster_emb, label_to_person, audio, 16000,
+    )
+    polished = st3.polish(verified, meta.language)
+    st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta)
+
+    from utils.audio_qc import overlap_ratio, source_codec_info
+    # Overlap ratio from the same diarization; we reconstruct a minimal
+    # "two-cluster activity" from labeled_segments since we don't keep the
+    # raw pyannote DataFrame past stage 2.
+    ov = _approximate_overlap_ratio(labeled_segments)
+    codec = source_codec_info(source)
+
+    transcript = {
+        "file_id": fid,
+        "date": meta.date,
+        "language": meta.language,
+        "duration_s": float(len(audio)) / 16000.0,
+        "overlap_ratio": ov,
+        "source_codec": codec.get("codec"),
+        "source_bitrate": codec.get("bitrate"),
+        "mfa_aligned": False,
+        "participants": [
+            {"id": p.id, "name": _display(p), "role": _role_for(p, meta)}
+            for p in label_to_person.values()
+        ],
+        "cluster_embeddings": {k: v.tolist() for k, v in cluster_emb.items()},
+        "segments": polished,
+    }
+    st3.stamp_db_state(transcript)
+    st3.finalize(transcript, POLISHED_DIR / f"{fid}.json")
+
+
+def _display(person) -> str:
+    from persons.schema import render_display
+    return render_display(person)
+
+
+def _role_for(person, meta) -> str | None:
+    if person.id == meta.teacher_id:
+        return "teacher"
+    if person.id == meta.student_id:
+        return "student"
+    return person.default_role
+
+
+def _approximate_overlap_ratio(segments: list[dict]) -> float:
+    """Cheap overlap approximation from attach_speaker_labels output."""
+    by_cluster: dict[str, list[tuple[float, float]]] = {}
+    for s in segments:
+        lbl = s.get("cluster_label")
+        if not lbl:
+            continue
+        by_cluster.setdefault(lbl, []).append((float(s["start"]), float(s["end"])))
+    from utils.audio_qc import overlap_ratio
+    class _Fake:
+        def iterrows(self):
+            for lbl, spans in by_cluster.items():
+                for a, b in spans:
+                    yield None, {"start": a, "end": b, "speaker": lbl}
+    if not segments:
+        return 0.0
+    total_s = float(max(s["end"] for s in segments))
+    return overlap_ratio(_Fake(), total_s)
+
+
+# ---------------------------------------------------------------------------
+# Normal mode driver
+# ---------------------------------------------------------------------------
+
+async def orchestrate_normal() -> int:
+    preflight()
+    inputs = discover_inputs(MATERIAL_DIR)
+    inputs = [p for p in inputs if needs_processing(p)]
+    if not inputs:
+        log.info("nothing to do — all inputs already have polished transcripts.")
+        return 0
+
+    log.info("found %d file(s) to process.", len(inputs))
+
+    # Phase 1 — batch vocal isolation, then release VRAM.
+    import stage1_isolate
+    pairs: list[tuple[Path, Path]] = []
+    for src in inputs:
+        try:
+            acap = stage1_isolate.isolate_one(src)
+            pairs.append((src, acap))
+        except Exception as exc:  # noqa: BLE001
+            log.error("stage 1 failed for %s: %s", src.name, exc)
+    stage1_isolate.teardown_separator()
+
+    # Phase 3-10 per file, GPU-serialized.
+    gpu_sem = asyncio.Semaphore(1)
+    results = await asyncio.gather(
+        *(_process_one(src, acap, gpu_sem) for src, acap in pairs),
+        return_exceptions=True,
+    )
+    ok = sum(1 for r in results if r is True)
+    log.info("complete: %d ok / %d attempted.", ok, len(results))
+    return 0 if ok == len(results) else 1
+
+
+# ---------------------------------------------------------------------------
+# Redo mode
+# ---------------------------------------------------------------------------
+
+async def orchestrate_redo(args: argparse.Namespace) -> int:
+    preflight()
+    from persons import redo as redo_mod
+
+    candidates = redo_mod.find_candidates(
+        threshold=args.threshold,
+        student=args.student,
+        teacher=args.teacher,
+        confidence_below=args.confidence_below,
+        after=args.after,
+        redo_all=args.all,
+    )
+    if not candidates:
+        log.info("redo: no candidates match.")
+        return 0
+    log.info("redo: %d candidate(s) match.", len(candidates))
+    if args.dry_run:
+        for c in candidates:
+            print(c.name)
+        return 0
+
+    ok = 0
+    for polished in candidates:
+        try:
+            await asyncio.to_thread(_redo_one, polished)
+            ok += 1
+        except Exception as exc:  # noqa: BLE001
+            log.exception("redo failed for %s: %s", polished.name, exc)
+    log.info("redo complete: %d ok / %d attempted.", ok, len(candidates))
+    return 0 if ok == len(candidates) else 1
+
+
+def _redo_one(polished_path: Path) -> None:
+    """
+    Re-run Phase 8-10 using cached Phase 1-7 artifacts.
+
+    The polished JSON contains cluster_embeddings + segments, so we can
+    re-identify without rerunning whisper / pyannote. Phase 10 rewrites the
+    voiceprint libraries against the new attribution.
+    """
+    import numpy as np
+    import stage3_postprocess as st3
+
+    with open(polished_path, "r", encoding="utf-8") as fh:
+        transcript = json.load(fh)
+    fid = transcript["file_id"]
+    meta = _meta_from_transcript(transcript)
+
+    acap = ACAPELLA_DIR / f"{fid}.wav"
+    if not acap.exists():
+        raise FileNotFoundError(f"missing cached acapella for redo: {acap}")
+    import soundfile as sf
+    audio, sr = sf.read(str(acap), dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1).astype(np.float32)
+    if sr != 16000:
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000).astype(np.float32)
+
+    cluster_emb = {k: np.array(v, dtype=np.float32)
+                   for k, v in (transcript.get("cluster_embeddings") or {}).items()}
+    segments = transcript.get("segments") or []
+
+    identified, label_to_person = st3.identify_speakers(
+        segments, cluster_emb, audio, 16000, meta,
+    )
+    verified = st3.run_verification(
+        identified, cluster_emb, label_to_person, audio, 16000,
+    )
+    polished = st3.polish(verified, meta.language)
+    st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta)
+
+    transcript["segments"] = polished
+    transcript["participants"] = [
+        {"id": p.id, "name": _display(p), "role": _role_for(p, meta)}
+        for p in label_to_person.values()
+    ]
+    st3.stamp_db_state(transcript)
+    st3.finalize(transcript, polished_path)
+
+
+def _meta_from_transcript(transcript: dict):
+    from filename_parser import SessionMeta
+    teacher_id = student_id = None
+    for p in transcript.get("participants") or []:
+        if p.get("role") == "teacher":
+            teacher_id = p["id"]
+        elif p.get("role") == "student":
+            student_id = p["id"]
+    return SessionMeta(
+        date=transcript["date"],
+        language=transcript["language"],
+        teacher_id=teacher_id or "",
+        student_id=student_id or "",
+        source_path=Path(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """CLI surface: normal run vs --redo mode."""
-    raise NotImplementedError
+    p = argparse.ArgumentParser(description="Vocality ASR pipeline orchestrator.")
+    p.add_argument("--redo", action="store_true",
+                   help="Reprocess already-polished transcripts with the current voiceprint DB.")
+    p.add_argument("--threshold", type=int, default=REDO_THRESHOLD_SESSIONS,
+                   help=f"[--redo] min session gain to qualify (default {REDO_THRESHOLD_SESSIONS})")
+    p.add_argument("--student", default=None, help="[--redo] only files with this student id")
+    p.add_argument("--teacher", default=None, help="[--redo] only files with this teacher id")
+    p.add_argument("--confidence-below", type=float, default=None,
+                   help="[--redo] only files with any segment below this confidence")
+    p.add_argument("--after", default=None,
+                   help="[--redo] only files processed_at before this ISO date")
+    p.add_argument("--all", action="store_true", help="[--redo] redo everything")
+    p.add_argument("--dry-run", action="store_true",
+                   help="[--redo] list candidates, don't actually run")
+    return p
 
 
 def main() -> None:
-    """Script entrypoint — parses args and dispatches to orchestrate()."""
-    raise NotImplementedError
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    fh = logging.FileHandler(
+        LOG_DIR / f"run-{datetime.now(tz=timezone.utc).strftime('%Y%m%d-%H%M%S')}.log",
+        encoding="utf-8",
+    )
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s | %(message)s"))
+    logging.getLogger().addHandler(fh)
+
+    args = build_arg_parser().parse_args()
+    if args.redo:
+        rc = asyncio.run(orchestrate_redo(args))
+    else:
+        rc = asyncio.run(orchestrate_normal())
+    sys.exit(rc)
 
 
 if __name__ == "__main__":
