@@ -11,7 +11,9 @@ if present).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
+
+from utils.text_norm import display_with_disambiguator
 
 
 @dataclass
@@ -35,14 +37,28 @@ class PersonRecord:
 
 def to_dict(p: PersonRecord) -> dict:
     """Serialize a PersonRecord to JSON-safe dict."""
-    raise NotImplementedError
+    d = asdict(p)
+    # Tuples round-trip as lists in JSON; normalize on the way out too.
+    if d.get("pitch_range_hz") is not None:
+        d["pitch_range_hz"] = list(d["pitch_range_hz"])
+    return d
 
 
 def from_dict(d: dict) -> PersonRecord:
-    """Deserialize from metadata.json."""
-    raise NotImplementedError
+    """Deserialize from metadata.json. Unknown keys are dropped defensively."""
+    valid_keys = {f.name for f in fields(PersonRecord)}
+    filtered = {k: v for k, v in d.items() if k in valid_keys}
+    rng = filtered.get("pitch_range_hz")
+    if rng is not None:
+        filtered["pitch_range_hz"] = tuple(rng)
+    return PersonRecord(**filtered)
 
 
 def render_display(p: PersonRecord) -> str:
     """Return 'Display' or 'Display (Disambiguator)' depending on record."""
-    raise NotImplementedError
+    return display_with_disambiguator(p.display_name, p.disambiguator)
+
+
+def total_sessions(p: PersonRecord) -> int:
+    """Combined role-agnostic session count — what `--redo --threshold` compares."""
+    return p.n_sessions_as_teacher + p.n_sessions_as_student
