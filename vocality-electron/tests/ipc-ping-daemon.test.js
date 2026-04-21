@@ -126,6 +126,26 @@ test('shutdown: emits shutting_down, exits 0', { skip: !pythonAvailable }, async
   assert.equal(code, 0);
 });
 
+test('second daemon while first is alive: fails fast with engine_lock_held', { skip: !pythonAvailable }, async () => {
+  const first = startDaemon();
+  try {
+    const ready = await first.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    // Start a second daemon while the first still holds the lock.
+    const second = startDaemon();
+    const evt = await second.nextEvent();
+    assert.equal(evt.type, 'error');
+    assert.equal(evt.error_type, 'engine_lock_held');
+    assert.equal(evt.recoverable, false);
+    const { code: secondCode } = await second.waitExit();
+    assert.equal(secondCode, 3);
+  } finally {
+    first.send({ cmd: 'shutdown' });
+    await first.waitExit();
+  }
+});
+
 test('unknown command: emits error event, daemon stays up', { skip: !pythonAvailable }, async () => {
   const d = startDaemon();
   try {

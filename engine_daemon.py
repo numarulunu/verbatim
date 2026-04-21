@@ -42,11 +42,12 @@ from ipc_protocol import (
     parse_command,
 )
 from utils import cancellation
+from utils import engine_lock
 
 # Keep these importable without loading config (which initialises dirs).
-# We'll wire real lock + preflight in Gate 5.
+# Real preflight wiring lands with the batch-handler sub-gate.
 
-ENGINE_VERSION = "1.0.0"  # will move to config.ENGINE_VERSION in Gate 5
+ENGINE_VERSION = "1.0.0"  # will move to config.ENGINE_VERSION once preflight lands
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +151,18 @@ def main() -> int:
     _configure_logging()
     log.info("daemon starting (engine_version=%s)", ENGINE_VERSION)
 
+    try:
+        lock_handle = engine_lock.acquire(engine_version=ENGINE_VERSION)
+    except engine_lock.EngineLockHeld as exc:
+        # Another daemon already owns `_voiceprints/`. Emit a structured
+        # error so the Electron wrapper can surface it, then exit non-zero.
+        emit(ErrorEvent(
+            error_type="engine_lock_held",
+            message=str(exc),
+            recoverable=False,
+        ))
+        return 3
+
     emit(ReadyEvent(engine_version=ENGINE_VERSION, models_loaded=[]))
 
     try:
@@ -182,6 +195,9 @@ def main() -> int:
             context={"traceback_head": traceback.format_exc().splitlines()[-6:]},
         ))
         return 2
+
+    finally:
+        engine_lock.release(lock_handle)
 
 
 if __name__ == "__main__":
