@@ -39,8 +39,8 @@ tqdm>=4.66
 pynvml>=11.5                     # GPU compute-capability probe
 
 # --- Windows GPU runtime (CTranslate2 needs CUDA 12 cuBLAS + cuDNN 8) ---
-nvidia-cuda-runtime-cu12
-nvidia-cublas-cu12
+nvidia-cuda-runtime-cu12<13
+nvidia-cublas-cu12<13
 nvidia-cudnn-cu11<9
 
 # --- pyannote embedder backend (1.x breaks under pytorch-lightning stack walk) ---
