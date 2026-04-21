@@ -98,6 +98,11 @@ def preflight(skip_disk_check: bool = False) -> None:
     if added:
         log.warning("corpus reconciler: re-indexed %d orphan polished transcript(s)", added)
 
+    # Install the hf_hub use_auth_token shim early so the redo path (which
+    # skips stage 2 / load_diarizer) still has it when load_embedder runs.
+    from utils.hf_compat import patch_hf_hub_use_auth_token
+    patch_hf_hub_use_auth_token()
+
 
 # ---------------------------------------------------------------------------
 # Discovery

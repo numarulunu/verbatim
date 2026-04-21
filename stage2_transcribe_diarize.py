@@ -269,62 +269,10 @@ def align(
 # Phase 7 — pyannote diarization (wrapped by WhisperX)
 # ---------------------------------------------------------------------------
 
-_hf_hub_patched = False
-
-
 def _patch_hf_hub_use_auth_token() -> None:
-    """
-    pyannote.audio 3.3.2 passes `use_auth_token=` down to
-    `huggingface_hub.hf_hub_download`, but huggingface_hub >=1.x dropped the
-    deprecated alias in favour of `token=`. This shim accepts the old kwarg
-    and forwards as `token=`.
-
-    Must patch EVERYWHERE the symbol has already been bound: the source
-    module PLUS any module that did `from huggingface_hub import hf_hub_download`
-    before our code runs (whisperx transitively imports pyannote.audio which
-    does exactly that). Walk sys.modules and replace every matching attribute.
-    """
-    global _hf_hub_patched
-    if _hf_hub_patched:
-        return
-    import sys
-    import huggingface_hub
-
-    orig = huggingface_hub.hf_hub_download
-
-    def _shim(*args, **kwargs):
-        if "use_auth_token" in kwargs:
-            kwargs.setdefault("token", kwargs.pop("use_auth_token"))
-        return orig(*args, **kwargs)
-
-    replaced = 0
-    huggingface_hub.hf_hub_download = _shim
-    replaced += 1
-    # The implementation module (huggingface_hub.file_download) — patch both.
-    try:
-        import huggingface_hub.file_download as fd
-        if getattr(fd, "hf_hub_download", None) is orig:
-            fd.hf_hub_download = _shim
-            replaced += 1
-    except ImportError:
-        pass
-    # Every module that did `from huggingface_hub import hf_hub_download`
-    # before now will have a stale reference to the original — rebind them.
-    for mod in list(sys.modules.values()):
-        if mod is None:
-            continue
-        try:
-            if getattr(mod, "hf_hub_download", None) is orig:
-                mod.hf_hub_download = _shim
-                replaced += 1
-        except Exception:  # noqa: BLE001 — some modules raise on attribute access
-            continue
-
-    _hf_hub_patched = True
-    log.info(
-        "patched hf_hub_download (use_auth_token -> token) in %d module(s)",
-        replaced,
-    )
+    """Deprecated module-local alias; forwards to utils.hf_compat."""
+    from utils.hf_compat import patch_hf_hub_use_auth_token as _p
+    _p()
 
 
 def load_diarizer():

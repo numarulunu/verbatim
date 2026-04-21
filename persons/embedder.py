@@ -36,6 +36,8 @@ def load_embedder():
         raise RuntimeError(
             "HUGGINGFACE_TOKEN / HF_TOKEN must be set to load pyannote/embedding"
         )
+    from utils.hf_compat import patch_hf_hub_use_auth_token
+    patch_hf_hub_use_auth_token()
     import torch
     from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
 
