@@ -20,6 +20,7 @@ converts it to asyncio so `cancel_batch` can interrupt in-flight
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 import traceback
@@ -133,18 +134,9 @@ def _handle(cmd) -> bool:
             handler(cmd, emit)
             return True
 
-        # Batch handlers (process_batch / redo_batch) land in the next
-        # sub-gate — for now they stub-error so the daemon stays responsive.
-        if isinstance(cmd, (ProcessBatchCommand, RedoBatchCommand)):
-            emit(ErrorEvent(
-                id=getattr(cmd, "id", None),
-                error_type="unknown_command",
-                message=f"{type(cmd).__name__} not yet implemented (arrives in Gate 5D)",
-                recoverable=True,
-                context={"cmd": getattr(cmd, "cmd", None)},
-            ))
-            return True
-
+        # ProcessBatch / RedoBatch are handled asynchronously in `_amain`
+        # before `_handle` is invoked. Reaching this branch for them would
+        # mean a wiring regression.
         emit(ErrorEvent(
             id=getattr(cmd, "id", None),
             error_type="unknown_command",
@@ -188,7 +180,58 @@ def _read_command(line: str):
     return None
 
 
-def main() -> int:
+async def _aread_line() -> str:
+    """Read one line from stdin without blocking the event loop.
+
+    asyncio.connect_read_pipe on Windows + sys.stdin is finicky; the thread
+    handoff is boring and works everywhere. We spend ~zero wall-clock time
+    in the worker (just waits on a syscall) so thread-pool exhaustion isn't
+    a concern.
+    """
+    return await asyncio.to_thread(sys.stdin.readline)
+
+
+async def _cancel_active_batch(task: asyncio.Task | None, timeout_s: float = 30.0) -> None:
+    """Signal an active batch to stop and wait for it to finish.
+
+    Called on shutdown / EOF. The pipeline observes the cancellation flag
+    at phase boundaries; if it doesn't return within `timeout_s` we hard-
+    cancel the asyncio task as a last resort.
+    """
+    if task is None or task.done():
+        return
+    cancellation.request_cancel()
+    try:
+        await asyncio.wait_for(task, timeout=timeout_s)
+    except asyncio.TimeoutError:
+        log.warning("batch task did not stop within %.0fs; cancelling", timeout_s)
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+
+# Single-slot holder for the in-flight batch task. At most one batch runs
+# at a time. `None` when idle. The read loop populates this on
+# process_batch / redo_batch and drains it on shutdown / EOF / SIGINT.
+_active_batch: asyncio.Task | None = None
+
+
+def _on_batch_done(task: asyncio.Task) -> None:
+    """Clear the active-batch slot and log any unhandled exception."""
+    global _active_batch
+    _active_batch = None
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.exception("batch task raised", exc_info=exc)
+
+
+async def _amain() -> int:
+    global _active_batch
+
     _configure_logging()
     log.info("daemon starting (engine_version=%s)", ENGINE_VERSION)
 
@@ -207,23 +250,54 @@ def main() -> int:
     emit(ReadyEvent(engine_version=ENGINE_VERSION, models_loaded=[]))
 
     try:
-        for raw in sys.stdin:
+        while True:
+            raw = await _aread_line()
+            if not raw:
+                # EOF — graceful close.
+                log.info("stdin closed; shutting down")
+                await _cancel_active_batch(_active_batch)
+                emit(ShuttingDownEvent())
+                return 0
             if not raw.strip():
                 continue
             cmd = _read_command(raw)
             if cmd is None:
                 continue
-            keep_going = _handle(cmd)
-            if not keep_going:
+
+            if isinstance(cmd, ShutdownCommand):
+                log.info("shutdown command received")
+                await _cancel_active_batch(_active_batch)
+                emit(ShuttingDownEvent())
                 return 0
-        # EOF reached without an explicit shutdown — treat as graceful close.
-        log.info("stdin closed; shutting down")
-        emit(ShuttingDownEvent())
-        return 0
+
+            if isinstance(cmd, (ProcessBatchCommand, RedoBatchCommand)):
+                if _active_batch is not None and not _active_batch.done():
+                    emit(ErrorEvent(
+                        id=getattr(cmd, "id", None),
+                        error_type="invalid_command_payload",
+                        message="a batch is already running; send cancel_batch first",
+                        recoverable=True,
+                    ))
+                    continue
+                coro = (
+                    handlers.async_handle_process_batch(cmd, emit)
+                    if isinstance(cmd, ProcessBatchCommand)
+                    else handlers.async_handle_redo_batch(cmd, emit)
+                )
+                _active_batch = asyncio.create_task(coro)
+                _active_batch.add_done_callback(_on_batch_done)
+                continue
+
+            # Synchronous dispatch for every other command. Sync commands
+            # are cheap (list_persons etc. — no IO latency to speak of);
+            # the blocking stdin read is the only truly slow primitive
+            # and it's already behind asyncio.to_thread.
+            _handle(cmd)
 
     except KeyboardInterrupt:
         log.info("SIGINT received")
         cancellation.request_cancel()
+        await _cancel_active_batch(_active_batch)
         emit(ShuttingDownEvent())
         return 0
 
@@ -239,6 +313,10 @@ def main() -> int:
 
     finally:
         engine_lock.release(lock_handle)
+
+
+def main() -> int:
+    return asyncio.run(_amain())
 
 
 if __name__ == "__main__":

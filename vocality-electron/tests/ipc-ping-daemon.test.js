@@ -182,6 +182,173 @@ test('list_persons: returns an array (may be non-empty from prior sessions)', { 
   }
 });
 
+test('process_batch: empty file list emits batch_started + batch_complete with counts=0', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    d.send({ cmd: 'process_batch', id: 'pb-1', files: [], options: { dry_run: true } });
+
+    const started = await d.nextEvent();
+    assert.equal(started.type, 'batch_started');
+    assert.equal(started.id, 'pb-1');
+    assert.equal(started.file_count, 0);
+
+    const complete = await d.nextEvent();
+    assert.equal(complete.type, 'batch_complete');
+    assert.equal(complete.id, 'pb-1');
+    assert.equal(complete.total_files, 0);
+    assert.equal(complete.successful, 0);
+    assert.equal(complete.failed, 0);
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
+test('process_batch (dry_run): emits file_started + file_complete per path, then batch_complete', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    d.send({
+      cmd: 'process_batch', id: 'pb-2',
+      files: ['fake/a.mp4', 'fake/b.mp4'],
+      options: { dry_run: true },
+    });
+
+    const started = await d.nextEvent();
+    assert.equal(started.type, 'batch_started');
+    assert.equal(started.file_count, 2);
+
+    const f0s = await d.nextEvent();
+    assert.equal(f0s.type, 'file_started');
+    assert.equal(f0s.index, 0);
+
+    const f0c = await d.nextEvent();
+    assert.equal(f0c.type, 'file_complete');
+    assert.equal(f0c.stats.ok, true);
+    assert.equal(f0c.stats.dry_run, true);
+
+    const f1s = await d.nextEvent();
+    assert.equal(f1s.type, 'file_started');
+    assert.equal(f1s.index, 1);
+
+    const f1c = await d.nextEvent();
+    assert.equal(f1c.type, 'file_complete');
+
+    const complete = await d.nextEvent();
+    assert.equal(complete.type, 'batch_complete');
+    assert.equal(complete.total_files, 2);
+    assert.equal(complete.successful, 2);
+    assert.equal(complete.failed, 0);
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
+test('process_batch: daemon stays responsive to list_persons while batch is running', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    // Kick off a large-ish dry_run batch so it spans several event-loop turns.
+    const manyFiles = Array.from({ length: 20 }, (_, i) => `fake/f${i}.mp4`);
+    d.send({ cmd: 'process_batch', id: 'pb-3', files: manyFiles, options: { dry_run: true } });
+
+    const started = await d.nextEvent();
+    assert.equal(started.type, 'batch_started');
+
+    // Intersperse a sync command — must receive its response even mid-batch.
+    d.send({ cmd: 'list_persons', id: 'lp-mid' });
+
+    // Drain events until we see the interleaved list_persons response.
+    let sawListPersons = false;
+    let sawBatchComplete = false;
+    for (let i = 0; i < 200 && !(sawListPersons && sawBatchComplete); i++) {
+      const evt = await d.nextEvent();
+      if (evt.type === 'persons_listed' && evt.id === 'lp-mid') sawListPersons = true;
+      if (evt.type === 'batch_complete' && evt.id === 'pb-3') sawBatchComplete = true;
+    }
+    assert.ok(sawListPersons, 'list_persons response must arrive during running batch');
+    assert.ok(sawBatchComplete, 'batch_complete must still arrive');
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
+test('process_batch: second process_batch while one is running is rejected', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    const manyFiles = Array.from({ length: 30 }, (_, i) => `fake/f${i}.mp4`);
+    d.send({ cmd: 'process_batch', id: 'pb-4a', files: manyFiles, options: { dry_run: true } });
+    const started = await d.nextEvent();
+    assert.equal(started.type, 'batch_started');
+
+    // Second request — must be rejected, the first keeps going.
+    d.send({ cmd: 'process_batch', id: 'pb-4b', files: ['fake/x.mp4'], options: { dry_run: true } });
+
+    let sawReject = false;
+    let sawOriginalComplete = false;
+    for (let i = 0; i < 200 && !(sawReject && sawOriginalComplete); i++) {
+      const evt = await d.nextEvent();
+      if (evt.type === 'error' && evt.id === 'pb-4b' && evt.error_type === 'invalid_command_payload') {
+        sawReject = true;
+      }
+      if (evt.type === 'batch_complete' && evt.id === 'pb-4a') {
+        sawOriginalComplete = true;
+      }
+    }
+    assert.ok(sawReject, 'second process_batch must be rejected');
+    assert.ok(sawOriginalComplete, 'original batch must still complete');
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
+test('cancel_batch interrupts a running batch', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    const manyFiles = Array.from({ length: 500 }, (_, i) => `fake/f${i}.mp4`);
+    d.send({ cmd: 'process_batch', id: 'pb-c', files: manyFiles, options: { dry_run: true } });
+    const started = await d.nextEvent();
+    assert.equal(started.type, 'batch_started');
+
+    // Cancel immediately.
+    d.send({ cmd: 'cancel_batch', id: 'can-1' });
+
+    let sawAck = false;
+    let completeEvt = null;
+    for (let i = 0; i < 2000 && !(sawAck && completeEvt); i++) {
+      const evt = await d.nextEvent();
+      if (evt.type === 'cancel_accepted' && evt.id === 'can-1') sawAck = true;
+      if (evt.type === 'batch_complete' && evt.id === 'pb-c') completeEvt = evt;
+    }
+    assert.ok(sawAck, 'cancel_accepted must arrive');
+    assert.ok(completeEvt, 'batch_complete must arrive after cancel');
+    // Cancellation should short-circuit before we process all 500 files.
+    assert.ok(
+      completeEvt.successful + completeEvt.failed < manyFiles.length,
+      'cancellation should stop before completing all files',
+    );
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
 test('unknown command: emits error event, daemon stays up', { skip: !pythonAvailable }, async () => {
   const d = startDaemon();
   try {

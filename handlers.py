@@ -31,6 +31,7 @@ from ipc_protocol import (
     SystemInfoEvent,
 )
 from utils import cancellation
+from utils.reporter import CallbackReporter
 
 log = logging.getLogger(__name__)
 
@@ -466,9 +467,281 @@ def handle_cancel_batch(cmd, emit: Emit) -> None:
     """Light the cooperative-cancel flag and ack.
 
     The actual interrupt happens inside the batch loop's `cancel_check()`
-    calls (Gate 5D). This handler only signals — it's safe to call with no
-    batch running (it just primes the flag for the next one, though the
-    next handler should reset it; see Gate 5D).
+    calls. This handler only signals — it's safe to call with no batch
+    running (the next batch handler resets the flag before starting).
     """
     cancellation.request_cancel()
     emit(CancelAcceptedEvent(id=cmd.id))
+
+
+# ---------------------------------------------------------------------------
+# process_batch (async) — Gate 5D
+# ---------------------------------------------------------------------------
+
+def _resolve_batch_inputs(cmd_files: list[str]) -> list[Path]:
+    """Turn the `files` payload into absolute Path objects. Empty list =
+    discover from MATERIAL_DIR via `run.discover_inputs`."""
+    if cmd_files:
+        return [Path(f) for f in cmd_files]
+    from config import MATERIAL_DIR
+    from run import discover_inputs, needs_processing
+    return [p for p in discover_inputs(MATERIAL_DIR) if needs_processing(p)]
+
+
+async def async_handle_process_batch(cmd, emit: Emit) -> None:
+    """Run the normal-path pipeline over a batch. Emits phase-less progress
+    at the per-file granularity — batch_started, file_started, file_complete,
+    batch_complete.
+
+    Cancellation: between files we call `cancellation.cancel_check()`; a
+    `cancel_batch` command during the stage-1 batch will interrupt at the
+    next boundary. Reset the flag at the start so prior `cancel_batch`
+    calls don't pre-cancel this one.
+
+    `options.dry_run = True` skips the actual pipeline work — useful for
+    integration tests that want to exercise the event schema end-to-end
+    without a GPU.
+    """
+    import asyncio
+    import time
+
+    cancellation.reset()
+    reporter = CallbackReporter(emit, cmd_id=cmd.id)
+    options = dict(cmd.options or {})
+    dry_run = bool(options.get("dry_run", False))
+
+    try:
+        files = _resolve_batch_inputs(cmd.files)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("process_batch: failed to resolve inputs")
+        reporter.error(
+            error_type="daemon_crash",
+            message=f"failed to resolve inputs: {exc}",
+            recoverable=False,
+        )
+        reporter.batch_complete(total_files=0, successful=0, failed=0,
+                                total_elapsed_s=0.0, failures=[])
+        return
+
+    reporter.batch_started(file_count=len(files), options=options)
+
+    if not files:
+        reporter.batch_complete(total_files=0, successful=0, failed=0,
+                                total_elapsed_s=0.0, failures=[])
+        return
+
+    if not dry_run:
+        try:
+            await asyncio.to_thread(_run_preflight, options)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("process_batch: preflight failed")
+            reporter.error(
+                error_type="daemon_crash",
+                message=f"preflight failed: {exc}",
+                recoverable=False,
+            )
+            reporter.batch_complete(
+                total_files=len(files), successful=0, failed=len(files),
+                total_elapsed_s=0.0,
+                failures=[{"file": str(p), "reason": "preflight failed"} for p in files],
+            )
+            return
+
+    t0 = time.monotonic()
+    successful = 0
+    failures: list[dict[str, Any]] = []
+
+    for i, src in enumerate(files):
+        # Yield to the event loop so the stdin reader can pick up
+        # cancel_batch / list_persons while this batch is in flight. In
+        # dry_run mode there are no other `await` points per iteration,
+        # so without this the read loop would be starved.
+        await asyncio.sleep(0)
+        try:
+            cancellation.cancel_check()
+        except cancellation.CancelledError:
+            log.info("process_batch: cancelled before file index %d", i)
+            break
+
+        reporter.file_started(file=str(src), index=i, total=len(files))
+
+        try:
+            if dry_run:
+                ok_one = True
+                output_path = str(src) + ".dryrun"
+                stats: dict[str, Any] = {"ok": True, "dry_run": True}
+            else:
+                ok_one, output_path, stats = await asyncio.to_thread(
+                    _process_one_sync, src,
+                )
+
+            if ok_one:
+                successful += 1
+                reporter.file_complete(file_index=i, output_path=output_path, stats=stats)
+            else:
+                failures.append({"file": src.name, "reason": "pipeline returned False"})
+                reporter.file_complete(file_index=i, output_path="", stats={"ok": False})
+
+        except cancellation.CancelledError:
+            log.info("process_batch: cancelled during file %s", src.name)
+            failures.append({"file": src.name, "reason": "cancelled"})
+            reporter.file_complete(file_index=i, output_path="",
+                                   stats={"ok": False, "cancelled": True})
+            break
+        except Exception as exc:  # noqa: BLE001 — per-file error containment
+            log.exception("process_batch: failure on %s", src.name)
+            failures.append({"file": src.name, "reason": str(exc)})
+            reporter.error(
+                error_type="daemon_crash",
+                message=f"{type(exc).__name__}: {exc}",
+                recoverable=True,
+                file=str(src),
+            )
+            reporter.file_complete(file_index=i, output_path="", stats={"ok": False})
+
+    elapsed = time.monotonic() - t0
+    reporter.batch_complete(
+        total_files=len(files),
+        successful=successful,
+        failed=len(failures),
+        total_elapsed_s=elapsed,
+        failures=failures,
+    )
+
+
+def _run_preflight(options: dict) -> None:
+    """Thin wrapper so we can asyncio.to_thread it."""
+    from run import preflight
+    preflight(skip_disk_check=bool(options.get("skip_disk_check", False)))
+
+
+def _process_one_sync(src: Path) -> tuple[bool, str, dict]:
+    """Blocking wrapper around `run._process_one` so the daemon can call
+    it via `asyncio.to_thread`. Does stage 1 → stage 3 for a single file.
+
+    Returns (ok, output_path, stats). On any internal failure, ok=False
+    and the exception has already been logged.
+    """
+    import asyncio as _asyncio
+
+    from config import POLISHED_DIR
+    from filename_parser import parse as parse_filename
+    from run import _process_one
+    import stage1_isolate
+
+    try:
+        acap = stage1_isolate.isolate_one(src)
+    finally:
+        stage1_isolate.teardown_separator()
+
+    gpu_sem = _asyncio.Semaphore(1)
+    loop = _asyncio.new_event_loop()
+    try:
+        ok_one = loop.run_until_complete(_process_one(src, acap, gpu_sem))
+    finally:
+        loop.close()
+
+    try:
+        meta = parse_filename(src)
+        from filename_parser import file_id as file_id_for
+        fid = file_id_for(meta)
+        output = str(POLISHED_DIR / f"{fid}.json")
+    except Exception:  # noqa: BLE001
+        output = ""
+    return bool(ok_one), output, {"ok": bool(ok_one)}
+
+
+async def async_handle_redo_batch(cmd, emit: Emit) -> None:
+    """Re-run the redo path for a filtered candidate list. Emits the same
+    batch_* lifecycle as process_batch, with file_* per candidate."""
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    cancellation.reset()
+    reporter = CallbackReporter(emit, cmd_id=cmd.id)
+    filter_ = dict(cmd.filter or {})
+    dry_run = bool(filter_.get("dry_run", False))
+
+    try:
+        from persons import redo as redo_mod
+        candidates = redo_mod.find_candidates(
+            threshold=int(filter_.get("threshold", 0)),
+            student=filter_.get("student"),
+            teacher=filter_.get("teacher"),
+            confidence_below=filter_.get("confidence_below"),
+            after=filter_.get("after"),
+            redo_all=bool(filter_.get("all", False)),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("redo_batch: candidate search failed")
+        reporter.error(
+            error_type="daemon_crash",
+            message=f"candidate search failed: {exc}",
+            recoverable=False,
+        )
+        reporter.batch_complete(total_files=0, successful=0, failed=0,
+                                total_elapsed_s=0.0, failures=[])
+        return
+
+    reporter.batch_started(file_count=len(candidates),
+                           options={"filter": filter_, "mode": "redo"})
+    if not candidates:
+        reporter.batch_complete(total_files=0, successful=0, failed=0,
+                                total_elapsed_s=0.0, failures=[])
+        return
+
+    t0 = time.monotonic()
+    successful = 0
+    failures: list[dict[str, Any]] = []
+
+    for i, polished in enumerate(candidates):
+        await asyncio.sleep(0)  # yield so read loop can service cancel/sync cmds
+        try:
+            cancellation.cancel_check()
+        except cancellation.CancelledError:
+            log.info("redo_batch: cancelled before candidate index %d", i)
+            break
+        reporter.file_started(file=str(polished), index=i, total=len(candidates))
+
+        try:
+            if dry_run:
+                ok_one = True
+            else:
+                await asyncio.to_thread(_redo_one_sync, polished)
+                ok_one = True
+        except cancellation.CancelledError:
+            failures.append({"file": polished.name, "reason": "cancelled"})
+            reporter.file_complete(file_index=i, output_path="",
+                                   stats={"ok": False, "cancelled": True})
+            break
+        except Exception as exc:  # noqa: BLE001
+            log.exception("redo_batch: failure on %s", polished.name)
+            failures.append({"file": polished.name, "reason": str(exc)})
+            reporter.error(
+                error_type="daemon_crash",
+                message=f"{type(exc).__name__}: {exc}",
+                recoverable=True,
+                file=str(polished),
+            )
+            reporter.file_complete(file_index=i, output_path="",
+                                   stats={"ok": False})
+            continue
+
+        if ok_one:
+            successful += 1
+        reporter.file_complete(file_index=i, output_path=str(polished),
+                               stats={"ok": ok_one, "dry_run": dry_run})
+
+    reporter.batch_complete(
+        total_files=len(candidates),
+        successful=successful,
+        failed=len(failures),
+        total_elapsed_s=time.monotonic() - t0,
+        failures=failures,
+    )
+
+
+def _redo_one_sync(polished: Path) -> None:
+    from run import _redo_one
+    _redo_one(polished)
