@@ -58,3 +58,20 @@ Material/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- Dev tooling (personal; never tracked) ---
+.claude/
+.claudeignore
+.serena/
+
+# --- Dropped features / benchmark outputs ---
+english_mfa/
+scores/
+
+# --- Dev analysis artifacts (kept local; not shipped) ---
+docs/mastermind-reports/
+docs/smac-reports/
+_backlog.md
+
+# --- Build-time logs (PyInstaller etc.) ---
+_build-engine.log
