@@ -37,13 +37,10 @@ GLOSSARY_DIR = PROJECT_ROOT / "glossaries"
 GLOSSARY_EN  = GLOSSARY_DIR / "glossary_en.json"
 GLOSSARY_RO  = GLOSSARY_DIR / "glossary_ro.json"
 
-MFA_DIR  = PROJECT_ROOT / "mfa"
-MFA_DICT = MFA_DIR / "mfa_custom_dict.yaml"
-
 # Directories that must exist before any stage runs.
 PIPELINE_DIRS = (
     ACAPELLA_DIR, RAW_JSON_DIR, POLISHED_DIR,
-    VOICEPRINT_DIR, LOG_DIR, GLOSSARY_DIR, MFA_DIR,
+    VOICEPRINT_DIR, LOG_DIR, GLOSSARY_DIR,
 )
 
 # ---------------------------------------------------------------------------

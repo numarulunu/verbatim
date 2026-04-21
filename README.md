@@ -56,9 +56,6 @@ python run.py --redo --student madalina --dry-run
 
 # Cleanup intermediate files after outputs are verified
 python cleanup.py
-
-# Optional MFA phoneme alignment (separate conda env)
-python mfa_align.py <file_id>
 ```
 
 ## Filename convention
