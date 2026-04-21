@@ -377,14 +377,17 @@ def _update_one_person(
         universal = np.mean(np.stack(active_centroids, axis=0), axis=0)
         universal = universal / (np.linalg.norm(universal) + 1e-9)
         np.save(pdir / "universal.npy", universal)
-        _push_recent(pdir / "recent.npy", universal)
+        if not is_redo:
+            # redo: centroids unchanged by construction, so skipping the recent-
+            # ring push avoids filling it with duplicates of the same session.
+            _push_recent(pdir / "recent.npy", universal)
 
     if not is_redo and not active_centroids:
         # No region cleared the VOICE_LIB_MIN_REGION_SECONDS bar — the voice
         # library didn't actually change. Don't inflate session counts with
         # empty appearances; flag it so the operator knows.
         log.warning(
-            "skipped voice-library update for %r — no region had >=%.1fs of audio "
+            "skipped voice-library update for %r - no region had >=%.1fs of audio "
             "(session counters NOT incremented; person appears in transcript only)",
             person.id, VOICE_LIB_MIN_REGION_SECONDS,
         )

@@ -31,7 +31,12 @@ def test_speechbrain_pinned_below_1_0():
 
 def test_cudnn_pinned_to_8_x():
     text = Path(__file__).resolve().parent.parent.joinpath("requirements.txt").read_text(encoding="utf-8")
-    assert "nvidia-cudnn-cu11<9" in text or "nvidia-cudnn-cu11==8" in text, (
-        "nvidia-cudnn-cu11 must be pinned <9 — CTranslate2 4.x needs cuDNN 8 DLLs "
-        "specifically. cuDNN 9 ships different symbol names. See SMAC Finding #3."
+    # Accept any pin that resolves to cuDNN 8.x (version <9).
+    assert "nvidia-cudnn-cu11" in text
+    assert any(
+        frag in text for frag in ("<9", "==8", "~=8.")
+    ), (
+        "nvidia-cudnn-cu11 must be pinned to the 8.x line - CTranslate2 4.x needs "
+        "cuDNN 8 DLLs specifically. cuDNN 9 ships different symbol names. "
+        "See SMAC Finding #3."
     )

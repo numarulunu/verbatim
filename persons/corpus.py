@@ -115,7 +115,7 @@ def reconcile_from_polished() -> int:
         entry = session_entry_from(transcript)
         if not entry.get("teacher_id") and not entry.get("student_id"):
             log.warning(
-                "reconcile: %s has no teacher_id/student_id — likely missing "
+                "reconcile: %s has no teacher_id/student_id - likely missing "
                 "'participants' field; indexing with partial metadata",
                 polished.name,
             )

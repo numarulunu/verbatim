@@ -180,3 +180,50 @@ def test_redo_skips_region_when_no_prior_file_exists(tmp_voiceprint_root, monkey
     assert not (pdir / "universal.npy").exists(), (
         "redo must NOT create universal.npy derived from a ghost region"
     )
+
+
+def test_redo_does_not_duplicate_recent_ring(tmp_voiceprint_root, monkeypatch):
+    """On redo, recent.npy must NOT grow a duplicate row — the centroid is
+    unchanged by construction so there's nothing new to push."""
+    import config  # noqa: F401
+    from filename_parser import SessionMeta
+    from persons import registry
+    from stage3_postprocess import update_voice_libraries
+
+    _reset_embed_counter()
+    monkeypatch.setattr("persons.embedder.embed", _fake_embed)
+    monkeypatch.setattr("persons.matcher.check_collisions", lambda: [])
+
+    meta = SessionMeta(
+        date="2025-08-07", language="en",
+        teacher_id="vasquez", student_id="ionut",
+        source_path=Path("test.mp4"),
+    )
+    person = registry.register_new(
+        id_="vasquez", display_name="vasquez",
+        default_role="teacher", first_seen=meta.date,
+    )
+    audio = np.ones(16000 * 30, dtype=np.float32)
+    segments = [{
+        "start": 0.0, "end": 20.0,
+        "speaker_id": "vasquez", "speaker_confidence": 1.0,
+        "matched_region": "speaking",
+    }]
+    label_to_person = {"SPEAKER_00": person}
+
+    # First pass (normal).
+    update_voice_libraries(segments, label_to_person, audio, 16000, meta, is_redo=False)
+    recent_after_first = np.load(
+        tmp_voiceprint_root / "_voiceprints" / "people" / "vasquez" / "recent.npy"
+    )
+    assert recent_after_first.shape[0] == 1
+
+    # Redo pass — ring must NOT gain a row.
+    update_voice_libraries(segments, label_to_person, audio, 16000, meta, is_redo=True)
+    recent_after_redo = np.load(
+        tmp_voiceprint_root / "_voiceprints" / "people" / "vasquez" / "recent.npy"
+    )
+    assert recent_after_redo.shape[0] == 1, (
+        f"redo appended a duplicate to recent.npy (shape {recent_after_redo.shape})"
+    )
+    assert np.allclose(recent_after_first, recent_after_redo)
