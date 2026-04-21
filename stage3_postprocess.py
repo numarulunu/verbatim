@@ -379,6 +379,16 @@ def _update_one_person(
         np.save(pdir / "universal.npy", universal)
         _push_recent(pdir / "recent.npy", universal)
 
+    if not is_redo and not active_centroids:
+        # No region cleared the VOICE_LIB_MIN_REGION_SECONDS bar — the voice
+        # library didn't actually change. Don't inflate session counts with
+        # empty appearances; flag it so the operator knows.
+        log.warning(
+            "skipped voice-library update for %r — no region had >=%.1fs of audio "
+            "(session counters NOT incremented; person appears in transcript only)",
+            person.id, VOICE_LIB_MIN_REGION_SECONDS,
+        )
+        return False
     if not is_redo:
         # Role + session counts.
         if meta.teacher_id == person.id:
