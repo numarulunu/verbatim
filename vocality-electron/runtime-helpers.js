@@ -41,4 +41,30 @@ function defaultDataDir(localAppData) {
   return path.join(localAppData, 'Vocality', 'data');
 }
 
-module.exports = { resolveEnginePath, defaultDataDir };
+/**
+ * Decide how to invoke the engine based on the environment.
+ *
+ * Packaged builds ship a PyInstaller folder at `resources/engine/` with a
+ * single `vocality-engine.exe` entry point. Development runs against the
+ * repo root's `.venv/Scripts/python.exe engine_daemon.py`.
+ *
+ * Arguments injected so this stays pure.
+ */
+function resolveEngineCommand(isPackaged, resourcesPath, moduleDirname) {
+  if (isPackaged) {
+    return {
+      command: path.join(resourcesPath, 'engine', 'vocality-engine.exe'),
+      args: [],
+      cwd: path.join(resourcesPath, 'engine'),
+    };
+  }
+  const repoRoot = path.resolve(moduleDirname, '..');
+  const python = path.join(repoRoot, '.venv', 'Scripts', 'python.exe');
+  return {
+    command: python,
+    args: ['-u', path.join(repoRoot, 'engine_daemon.py')],
+    cwd: repoRoot,
+  };
+}
+
+module.exports = { resolveEnginePath, defaultDataDir, resolveEngineCommand };

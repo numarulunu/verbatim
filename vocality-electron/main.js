@@ -1,20 +1,23 @@
 /**
  * Vocality — Electron main process.
  *
- * GATE-3 SCAFFOLD. Responsibilities that land later:
- *   - Daemon supervision (Gate 5)
- *   - IPC handler registration (Gate 4)
- *   - Tray + auto-updater + settings (Gate 6/8)
+ * Owns the single `EngineManager` instance for the whole app lifetime:
+ * spawn on ready, stop on quit. Events from the daemon are forwarded to
+ * the renderer via `webContents.send('vocality:event', ...)`. Commands
+ * from the renderer arrive through `ipcMain.handle('vocality:send', ...)`
+ * and go straight to `engine.send()`.
  *
- * This file deliberately does the minimum: create a secure, titled window
- * and hold a single-instance lock. Everything else arrives in later gates.
+ * Future gates add: tray, auto-updater, settings dialog (6G).
  */
 'use strict';
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('node:path');
+const { EngineManager, STATUS } = require('./engine-manager.js');
+const { resolveEngineCommand } = require('./runtime-helpers.js');
 
 let mainWindow = null;
+let engine = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -38,6 +41,57 @@ function createWindow() {
   });
 }
 
+function sendToRenderer(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+async function startEngine() {
+  const { command, args, cwd } = resolveEngineCommand(
+    app.isPackaged,
+    process.resourcesPath,
+    __dirname,
+  );
+  engine = new EngineManager({
+    pythonPath: command,
+    args,
+    cwd,
+    env: process.env,
+  });
+  engine.onEvent((evt) => sendToRenderer('vocality:event', evt));
+  engine.onStatus((s) => sendToRenderer('vocality:status', s));
+
+  try {
+    await engine.spawn();
+  } catch (err) {
+    // Surface the failure so the renderer can show a fatal banner.
+    sendToRenderer('vocality:event', {
+      type: 'error',
+      error_type: 'daemon_crash',
+      message: `engine failed to start: ${err.message}`,
+      recoverable: false,
+    });
+  }
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('vocality:send', (_evt, command) => {
+    if (!engine) throw new Error('engine not initialised');
+    engine.send(command);
+    return { ok: true };
+  });
+  ipcMain.handle('vocality:status', () => {
+    if (!engine) return { status: STATUS.DOWN, lastReady: null };
+    return { status: engine.status, lastReady: engine.lastReady };
+  });
+  ipcMain.handle('vocality:restart', async () => {
+    if (engine) await engine.stop();
+    await startEngine();
+    return { ok: true };
+  });
+}
+
 // Single-instance lock (brief §3). A second launch focuses the existing window.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -50,7 +104,11 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(createWindow);
+  app.whenReady().then(async () => {
+    registerIpcHandlers();
+    createWindow();
+    await startEngine();
+  });
 
   app.on('window-all-closed', () => {
     // Windows/Linux: quit on last window close. macOS: keep app running
@@ -60,5 +118,16 @@ if (!gotLock) {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  app.on('before-quit', async (event) => {
+    if (engine && engine.status !== STATUS.DOWN && engine.status !== STATUS.CRASHED) {
+      event.preventDefault();
+      try {
+        await engine.stop();
+      } catch (_) { /* swallow — we're quitting */ }
+      engine = null;
+      app.quit();
+    }
   });
 }
