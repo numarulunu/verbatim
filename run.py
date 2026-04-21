@@ -90,6 +90,14 @@ def preflight(skip_disk_check: bool = False) -> None:
 
     pin_to_p_cores()
 
+    # Reconcile any orphan polished JSONs missing from corpus.json (crash
+    # recovery for the stage3.finalize two-write window — see _backlog.md
+    # SMAC Finding #4).
+    from persons.corpus import reconcile_from_polished
+    added = reconcile_from_polished()
+    if added:
+        log.warning("corpus reconciler: re-indexed %d orphan polished transcript(s)", added)
+
 
 # ---------------------------------------------------------------------------
 # Discovery
