@@ -1,13 +1,13 @@
 # electron-builder config.
 #
 # Produces a single self-contained Windows installer that lands in
-# C:\Program Files\Vocality\. The PyInstaller-frozen engine (bundled by
+# C:\Program Files\Verbatim\. The PyInstaller-frozen engine (bundled by
 # extraResources) ships the Python runtime, torch, CUDA DLLs, pyannote,
 # whisperx, audio-separator, and ffmpeg. Model weights (~5–8 GB) download
 # on first run into the user's HF cache — too large for the installer.
 
-appId: ro.vocality.asr
-productName: Vocality
+appId: ro.verbatim.asr
+productName: Verbatim
 
 directories:
   output: dist
@@ -20,11 +20,11 @@ win:
 
 nsis:
   oneClick: false
-  perMachine: true                      # installs to C:\Program Files\Vocality\ — admin prompt
+  perMachine: true                      # installs to C:\Program Files\Verbatim\ — admin prompt
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Vocality
+  shortcutName: Verbatim
 
 extraResources:
   - from: engine/
@@ -35,4 +35,4 @@ extraResources:
 publish:
   provider: github
   owner: numarulunu
-  repo: vocality-asr
+  repo: verbatim-asr

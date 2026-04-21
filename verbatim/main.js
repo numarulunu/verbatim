@@ -1,10 +1,10 @@
 /**
- * Vocality — Electron main process.
+ * Verbatim — Electron main process.
  *
  * Owns the single `EngineManager` instance for the whole app lifetime:
  * spawn on ready, stop on quit. Events from the daemon are forwarded to
- * the renderer via `webContents.send('vocality:event', ...)`. Commands
- * from the renderer arrive through `ipcMain.handle('vocality:send', ...)`
+ * the renderer via `webContents.send('verbatim:event', ...)`. Commands
+ * from the renderer arrive through `ipcMain.handle('verbatim:send', ...)`
  * and go straight to `engine.send()`.
  *
  * Future gates add: tray, auto-updater, settings dialog (6G).
@@ -32,7 +32,7 @@ let mainWindow = null;
 let engine = null;
 
 function settingsFilePath() {
-  return path.join(app.getPath('userData'), 'vocality-settings.json');
+  return path.join(app.getPath('userData'), 'verbatim-settings.json');
 }
 
 function loadSettings() {
@@ -56,7 +56,7 @@ function daemonEnv() {
   const env = { ...process.env };
   if (settings.hf_token)          env.HF_TOKEN = settings.hf_token;
   if (settings.anthropic_api_key) env.ANTHROPIC_API_KEY = settings.anthropic_api_key;
-  if (settings.data_dir)          env.VOCALITY_ROOT = settings.data_dir;
+  if (settings.data_dir)          env.VERBATIM_ROOT = settings.data_dir;
   return env;
 }
 
@@ -64,7 +64,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: 'Vocality',
+    title: 'Verbatim',
     backgroundColor: '#111111',
     // Security (non-negotiable per brief §3).
     webPreferences: {
@@ -100,14 +100,14 @@ async function startEngine() {
     cwd,
     env: daemonEnv(),
   });
-  engine.onEvent((evt) => sendToRenderer('vocality:event', evt));
-  engine.onStatus((s) => sendToRenderer('vocality:status', s));
+  engine.onEvent((evt) => sendToRenderer('verbatim:event', evt));
+  engine.onStatus((s) => sendToRenderer('verbatim:status', s));
 
   try {
     await engine.spawn();
   } catch (err) {
     // Surface the failure so the renderer can show a fatal banner.
-    sendToRenderer('vocality:event', {
+    sendToRenderer('verbatim:event', {
       type: 'error',
       error_type: 'daemon_crash',
       message: `engine failed to start: ${err.message}`,
@@ -117,22 +117,22 @@ async function startEngine() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('vocality:send', (_evt, command) => {
+  ipcMain.handle('verbatim:send', (_evt, command) => {
     if (!engine) throw new Error('engine not initialised');
     engine.send(command);
     return { ok: true };
   });
-  ipcMain.handle('vocality:status', () => {
+  ipcMain.handle('verbatim:status', () => {
     if (!engine) return { status: STATUS.DOWN, lastReady: null };
     return { status: engine.status, lastReady: engine.lastReady };
   });
-  ipcMain.handle('vocality:restart', async () => {
+  ipcMain.handle('verbatim:restart', async () => {
     if (engine) await engine.stop();
     await startEngine();
     return { ok: true };
   });
-  ipcMain.handle('vocality:get-settings', () => loadSettings());
-  ipcMain.handle('vocality:save-settings', (_evt, settings) => {
+  ipcMain.handle('verbatim:get-settings', () => loadSettings());
+  ipcMain.handle('verbatim:save-settings', (_evt, settings) => {
     saveSettings(settings);
     return { ok: true };
   });
@@ -144,7 +144,7 @@ function registerIpcHandlers() {
  * GitHub Releases endpoint has nothing to offer yet.
  *
  * Relays every lifecycle event to the renderer as
- * {channel: 'vocality:update-status', kind, ...payload} so the UI can
+ * {channel: 'verbatim:update-status', kind, ...payload} so the UI can
  * surface "Update available — downloading" / "Update ready to install"
  * banners. Silent fallback if electron-updater isn't installed.
  */
@@ -163,7 +163,7 @@ function initAutoUpdater() {
   autoUpdater.logger = console;
 
   const relay = (kind, payload = {}) => {
-    sendToRenderer('vocality:update-status', { kind, ...payload });
+    sendToRenderer('verbatim:update-status', { kind, ...payload });
   };
 
   autoUpdater.on('checking-for-update',    () => relay('checking'));

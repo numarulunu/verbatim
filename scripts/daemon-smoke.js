@@ -1,5 +1,5 @@
 /**
- * Smoke test for the Vocality daemon — Gate 7.
+ * Smoke test for the Verbatim daemon — Gate 7.
  *
  * Spawns engine_daemon.py against the real repo state and drives it
  * through the non-pipeline commands plus a dry_run process_batch. No
@@ -16,7 +16,7 @@ const readline = require('node:readline');
 const {
   encodeCommand,
   parseEvent,
-} = require('../vocality-electron/ipc-protocol.js');
+} = require('../verbatim/ipc-protocol.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const PY = path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe');

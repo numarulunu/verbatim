@@ -76,7 +76,7 @@ def test_transcribe_align_diarize_emits_asr_alignment_diarization(stub_stage2):
 def test_finalize_emits_identification_verification_polish_corpus_update(
     tmp_path, stub_stage3, monkeypatch,
 ):
-    monkeypatch.setenv("VOCALITY_ROOT", str(tmp_path))
+    monkeypatch.setenv("VERBATIM_ROOT", str(tmp_path))
     for mod in list(sys.modules):
         if mod == "config" or mod.startswith("persons") or mod == "run":
             sys.modules.pop(mod, None)

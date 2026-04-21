@@ -16,7 +16,7 @@ import pytest
 
 @pytest.fixture
 def tmp_project(monkeypatch, tmp_path):
-    monkeypatch.setenv("VOCALITY_ROOT", str(tmp_path))
+    monkeypatch.setenv("VERBATIM_ROOT", str(tmp_path))
     for mod in list(sys.modules):
         if mod in ("config", "handlers", "run", "filename_parser") or mod.startswith("persons"):
             sys.modules.pop(mod, None)

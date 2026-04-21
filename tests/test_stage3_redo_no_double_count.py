@@ -17,7 +17,7 @@ import pytest
 
 @pytest.fixture
 def tmp_voiceprint_root(monkeypatch, tmp_path):
-    monkeypatch.setenv("VOCALITY_ROOT", str(tmp_path))
+    monkeypatch.setenv("VERBATIM_ROOT", str(tmp_path))
     # Force the config module to re-evaluate PROJECT_ROOT and propagate to all
     # modules that bound VOICEPRINT_DIR / PROJECT_ROOT at import time.
     for mod in list(sys.modules):

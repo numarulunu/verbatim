@@ -1,5 +1,5 @@
 /**
- * Vocality preload — whitelist-only bridge between main and renderer.
+ * Verbatim preload — whitelist-only bridge between main and renderer.
  *
  * Security constraints (brief §3):
  *   - contextIsolation: true (enforced in main.js)
@@ -11,7 +11,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('vocality', {
+contextBridge.exposeInMainWorld('verbatim', {
   version: '0.1.0',
 
   /**
@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('vocality', {
    * (does NOT wait for a matching event — subscribe via onEvent + filter
    * on command id for that).
    */
-  send: (command) => ipcRenderer.invoke('vocality:send', command),
+  send: (command) => ipcRenderer.invoke('verbatim:send', command),
 
   /**
    * Subscribe to daemon events. The callback receives parsed event
@@ -28,8 +28,8 @@ contextBridge.exposeInMainWorld('vocality', {
    */
   onEvent: (cb) => {
     const listener = (_evt, payload) => cb(payload);
-    ipcRenderer.on('vocality:event', listener);
-    return () => ipcRenderer.removeListener('vocality:event', listener);
+    ipcRenderer.on('verbatim:event', listener);
+    return () => ipcRenderer.removeListener('verbatim:event', listener);
   },
 
   /**
@@ -38,29 +38,29 @@ contextBridge.exposeInMainWorld('vocality', {
    */
   onStatus: (cb) => {
     const listener = (_evt, payload) => cb(payload);
-    ipcRenderer.on('vocality:status', listener);
-    return () => ipcRenderer.removeListener('vocality:status', listener);
+    ipcRenderer.on('verbatim:status', listener);
+    return () => ipcRenderer.removeListener('verbatim:status', listener);
   },
 
   /** Synchronously-ish fetch the current daemon status + last ready event. */
-  status: () => ipcRenderer.invoke('vocality:status'),
+  status: () => ipcRenderer.invoke('verbatim:status'),
 
   /** Restart the daemon (after crash or for a fresh run). */
-  restart: () => ipcRenderer.invoke('vocality:restart'),
+  restart: () => ipcRenderer.invoke('verbatim:restart'),
 
   /** Read the persisted user settings (HF/Anthropic tokens, data dir). */
-  getSettings: () => ipcRenderer.invoke('vocality:get-settings'),
+  getSettings: () => ipcRenderer.invoke('verbatim:get-settings'),
 
   /** Persist settings to userData and return {ok: true}. Caller usually
-   *  follows up with vocality.restart() so the daemon picks them up. */
-  saveSettings: (s) => ipcRenderer.invoke('vocality:save-settings', s),
+   *  follows up with verbatim.restart() so the daemon picks them up. */
+  saveSettings: (s) => ipcRenderer.invoke('verbatim:save-settings', s),
 
   /** Subscribe to electron-updater lifecycle events. `kind` is one of
    *  'checking' | 'available' | 'current' | 'downloading' | 'downloaded'
    *  | 'error'. No events in dev mode. */
   onUpdateStatus: (cb) => {
     const listener = (_evt, payload) => cb(payload);
-    ipcRenderer.on('vocality:update-status', listener);
-    return () => ipcRenderer.removeListener('vocality:update-status', listener);
+    ipcRenderer.on('verbatim:update-status', listener);
+    return () => ipcRenderer.removeListener('verbatim:update-status', listener);
   },
 });

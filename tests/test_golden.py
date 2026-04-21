@@ -68,7 +68,7 @@ def test_golden_transcript_wer_within_threshold():
         model_size="medium",
         language="",  # mixed RO/EN — let auto-detect fire
         beam_size=1,
-        initial_prompt="Vocality, Melocchi, Vázquez, passaggio, appoggio, vocalise.",
+        initial_prompt="Verbatim, Melocchi, Vázquez, passaggio, appoggio, vocalise.",
     )
     result = pool.transcribe(str(WAV))
     hyp = result.get("text", "").strip()

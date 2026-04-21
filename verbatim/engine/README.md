@@ -5,7 +5,7 @@ keep hand-edited files here, they will be wiped.
 
 At build time, `build-engine.spec` at the repo root produces:
 
-- `vocality-engine.exe` — daemon entry point (frozen `engine_daemon.py`)
+- `verbatim-engine.exe` — daemon entry point (frozen `engine_daemon.py`)
 - `_internal/` — Python runtime + native extensions (~3–5 GB)
 
 electron-builder's `extraResources` copies this whole directory into the

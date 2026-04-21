@@ -1,11 +1,11 @@
 """
-Vocality engine daemon IPC protocol.
+Verbatim engine daemon IPC protocol.
 
 Line-delimited JSON over stdin/stdout. This module is the single source of
 truth for command + event shapes.
 
 - Python side uses the dataclasses below directly.
-- Electron side consumes `vocality-electron/ipc-protocol.json`, generated
+- Electron side consumes `verbatim/ipc-protocol.json`, generated
   by running `python ipc_protocol.py` at the repo root.
 
 Commands flow Electron → Python (stdin). Events flow Python → Electron
@@ -548,6 +548,6 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         out_path = Path(sys.argv[1])
     else:
-        out_path = Path(__file__).resolve().parent / "vocality-electron" / "ipc-protocol.json"
+        out_path = Path(__file__).resolve().parent / "verbatim" / "ipc-protocol.json"
     write_schema(out_path)
     print(f"wrote protocol schema to {out_path}", file=sys.stderr)

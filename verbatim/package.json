@@ -1,7 +1,7 @@
 {
-  "name": "vocality",
+  "name": "verbatim",
   "version": "0.1.0",
-  "description": "Local GUI for the Vocality ASR pipeline — vocal-lesson transcription with per-person voiceprints",
+  "description": "Local GUI for the Verbatim ASR pipeline — vocal-lesson transcription with per-person voiceprints",
   "main": "main.js",
   "author": "Ionuț Roșu",
   "license": "UNLICENSED",
@@ -10,7 +10,7 @@
     "start": "electron .",
     "test": "node --test \"tests/**/*.test.js\"",
     "fetch-ffmpeg": "cd .. && node scripts/fetch-ffmpeg.js",
-    "build-engine": "cd .. && .venv\\Scripts\\python.exe -m PyInstaller --noconfirm --distpath vocality-electron build-engine.spec",
+    "build-engine": "cd .. && .venv\\Scripts\\python.exe -m PyInstaller --noconfirm --distpath verbatim build-engine.spec",
     "build": "electron-builder --config build-config/electron-builder.yml",
     "build-win": "electron-builder --win --config build-config/electron-builder.yml",
     "build-all-win": "npm run fetch-ffmpeg && npm run build-engine && npm run build-win",

@@ -1,5 +1,5 @@
 """
-Vocality ASR — centralized configuration.
+Verbatim — centralized configuration.
 
 All tunables, paths, and model parameters live here. Stage modules must not
 contain magic numbers or hardcoded paths. Secrets are read from environment
@@ -18,7 +18,7 @@ from pathlib import Path
 # Paths
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = Path(os.environ.get("VOCALITY_ROOT", Path(__file__).resolve().parent))
+PROJECT_ROOT = Path(os.environ.get("VERBATIM_ROOT", Path(__file__).resolve().parent))
 
 # Input sources (read-only — pipeline never writes here)
 MATERIAL_DIR = PROJECT_ROOT / "Material"

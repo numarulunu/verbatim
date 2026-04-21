@@ -11,17 +11,17 @@ const { resolveEnginePath, defaultDataDir, resolveEngineCommand } = require('../
 
 test('resolveEnginePath: packaged mode uses process.resourcesPath', () => {
   const p = resolveEnginePath(true, '/fake/resources', '/fake/dev');
-  assert.equal(p, path.join('/fake/resources', 'engine', 'vocality-engine.exe'));
+  assert.equal(p, path.join('/fake/resources', 'engine', 'verbatim-engine.exe'));
 });
 
 test('resolveEnginePath: dev mode uses __dirname', () => {
   const p = resolveEnginePath(false, '/fake/resources', '/fake/dev');
-  assert.equal(p, path.join('/fake/dev', 'engine', 'vocality-engine.exe'));
+  assert.equal(p, path.join('/fake/dev', 'engine', 'verbatim-engine.exe'));
 });
 
-test('defaultDataDir: joins under Vocality/data', () => {
+test('defaultDataDir: joins under Verbatim/data', () => {
   const p = defaultDataDir('C:/Users/fake/AppData/Local');
-  assert.equal(p, path.join('C:/Users/fake/AppData/Local', 'Vocality', 'data'));
+  assert.equal(p, path.join('C:/Users/fake/AppData/Local', 'Verbatim', 'data'));
 });
 
 test('defaultDataDir: throws on missing LOCALAPPDATA', () => {
@@ -30,16 +30,16 @@ test('defaultDataDir: throws on missing LOCALAPPDATA', () => {
   assert.throws(() => defaultDataDir(undefined), /LOCALAPPDATA/);
 });
 
-test('resolveEngineCommand: packaged → vocality-engine.exe, no args', () => {
+test('resolveEngineCommand: packaged → verbatim-engine.exe, no args', () => {
   const cmd = resolveEngineCommand(true, '/fake/resources', '/fake/dev');
-  assert.equal(cmd.command, path.join('/fake/resources', 'engine', 'vocality-engine.exe'));
+  assert.equal(cmd.command, path.join('/fake/resources', 'engine', 'verbatim-engine.exe'));
   assert.deepEqual(cmd.args, []);
   assert.equal(cmd.cwd, path.join('/fake/resources', 'engine'));
 });
 
 test('resolveEngineCommand: dev → .venv python + engine_daemon.py at repo root', () => {
-  const cmd = resolveEngineCommand(false, '/fake/resources', '/repo/vocality-electron');
-  const repo = path.resolve('/repo/vocality-electron', '..');
+  const cmd = resolveEngineCommand(false, '/fake/resources', '/repo/verbatim');
+  const repo = path.resolve('/repo/verbatim', '..');
   assert.equal(cmd.command, path.join(repo, '.venv', 'Scripts', 'python.exe'));
   assert.deepEqual(cmd.args, ['-u', path.join(repo, 'engine_daemon.py')]);
   assert.equal(cmd.cwd, repo);

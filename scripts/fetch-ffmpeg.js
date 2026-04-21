@@ -67,7 +67,7 @@ async function main() {
   }
   fs.mkdirSync(DEST, { recursive: true });
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vocality-ffmpeg-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'verbatim-ffmpeg-'));
   const zipPath = path.join(tmpDir, 'ffmpeg.zip');
 
   console.log(`fetching ${URL} → ${zipPath}`);

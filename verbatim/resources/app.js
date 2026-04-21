@@ -1,5 +1,5 @@
 /**
- * Vocality renderer — dispatcher + view rendering.
+ * Verbatim renderer — dispatcher + view rendering.
  *
  * - state is owned by the module-level `state` variable
  * - incoming daemon events flow through appState.reduceEvent
@@ -7,14 +7,14 @@
  *   custom patches
  * - render() is idempotent; called after every dispatch
  *
- * All daemon IO goes through window.vocality.* (preload bridge).
+ * All daemon IO goes through window.verbatim.* (preload bridge).
  */
 'use strict';
 
 (() => {
-  if (!window.vocality) {
+  if (!window.verbatim) {
     document.body.innerHTML =
-      '<main style="padding:24px;color:#b06a6a">ERROR: preload not wired — window.vocality is missing.</main>';
+      '<main style="padding:24px;color:#b06a6a">ERROR: preload not wired — window.verbatim is missing.</main>';
     return;
   }
   if (!window.appState) {
@@ -345,7 +345,7 @@
 
   function selectPerson(id) {
     activePersonId = id;
-    window.vocality.send({ cmd: 'inspect_person', id: nextId('insp'), person_id: id });
+    window.verbatim.send({ cmd: 'inspect_person', id: nextId('insp'), person_id: id });
     render();
   }
 
@@ -420,13 +420,13 @@
       dispatch((s) => setView(s, next));
       // When entering Registry, refresh the person list from the daemon.
       if (next === 'registry' && state.daemon.status === 'ready') {
-        window.vocality.send({ cmd: 'list_persons', id: nextId('lp') });
+        window.verbatim.send({ cmd: 'list_persons', id: nextId('lp') });
       }
     });
   }
 
   refreshPersonsBtn.addEventListener('click', () => {
-    window.vocality.send({ cmd: 'list_persons', id: nextId('lp') });
+    window.verbatim.send({ cmd: 'list_persons', id: nextId('lp') });
   });
 
   editBtn.addEventListener('click', () => {
@@ -467,7 +467,7 @@
         for (const k of ['display_name', 'disambiguator', 'default_role', 'voice_type', 'fach']) {
           if (values[k] !== undefined && values[k] !== '') updates[k] = values[k];
         }
-        window.vocality.send({
+        window.verbatim.send({
           cmd: 'edit_person', id: nextId('edit'),
           person_id: person.id, updates,
         });
@@ -484,7 +484,7 @@
       onSubmit: (values) => {
         const newId = (values.new_id || '').trim();
         if (!newId || newId === person.id) return;
-        window.vocality.send({
+        window.verbatim.send({
           cmd: 'rename_person', id: nextId('rn'),
           old_id: person.id, new_id: newId,
         });
@@ -495,7 +495,7 @@
 
   settingsBtn.addEventListener('click', async () => {
     let existing = {};
-    try { existing = await window.vocality.getSettings(); } catch (_) { /* first launch */ }
+    try { existing = await window.verbatim.getSettings(); } catch (_) { /* first launch */ }
     openModal({
       title: 'Settings',
       fields: [
@@ -508,18 +508,18 @@
           value: existing.anthropic_api_key || '',
         },
         {
-          name: 'data_dir', label: 'Data directory (VOCALITY_ROOT override)',
+          name: 'data_dir', label: 'Data directory (VERBATIM_ROOT override)',
           value: existing.data_dir || '',
         },
       ],
       onSubmit: async (values) => {
-        await window.vocality.saveSettings({
+        await window.verbatim.saveSettings({
           hf_token: (values.hf_token || '').trim(),
           anthropic_api_key: (values.anthropic_api_key || '').trim(),
           data_dir: (values.data_dir || '').trim(),
         });
         // Restart the daemon so it picks up new env.
-        try { await window.vocality.restart(); } catch (_) { /* surfaced via onStatus */ }
+        try { await window.verbatim.restart(); } catch (_) { /* surfaced via onStatus */ }
       },
     });
   });
@@ -527,17 +527,17 @@
   redoFindBtn.addEventListener('click', () => {
     const filter = readRedoFilter();
     filter.dry_run = true;
-    window.vocality.send({ cmd: 'redo_batch', id: nextId('redo-dry'), filter });
+    window.verbatim.send({ cmd: 'redo_batch', id: nextId('redo-dry'), filter });
   });
 
   redoRunBtn.addEventListener('click', () => {
     const filter = readRedoFilter();
     filter.dry_run = false;
-    window.vocality.send({ cmd: 'redo_batch', id: nextId('redo'), filter });
+    window.verbatim.send({ cmd: 'redo_batch', id: nextId('redo'), filter });
   });
 
   redoCancelBtn.addEventListener('click', () => {
-    window.vocality.send({ cmd: 'cancel_batch', id: nextId('cancel') });
+    window.verbatim.send({ cmd: 'cancel_batch', id: nextId('cancel') });
   });
 
   mergeBtn.addEventListener('click', () => {
@@ -554,7 +554,7 @@
       }],
       onSubmit: (values) => {
         if (!values.target_id) return;
-        window.vocality.send({
+        window.verbatim.send({
           cmd: 'merge_persons', id: nextId('mg'),
           source_id: person.id, target_id: values.target_id,
         });
@@ -565,7 +565,7 @@
 
   scanBtn.addEventListener('click', () => {
     const path = (scanPathInput.value || '').trim() || 'Material';
-    window.vocality.send({
+    window.verbatim.send({
       cmd: 'scan_files',
       id: nextId('scan'),
       input_dir: path,
@@ -577,7 +577,7 @@
     const files = (state.batch.scan.files || [])
       .filter((f) => f.meta && f.meta.parse_ok !== false)
       .map((f) => f.path);
-    window.vocality.send({
+    window.verbatim.send({
       cmd: 'process_batch',
       id: nextId('batch'),
       files,
@@ -586,27 +586,27 @@
   });
 
   cancelBtn.addEventListener('click', () => {
-    window.vocality.send({ cmd: 'cancel_batch', id: nextId('cancel') });
+    window.verbatim.send({ cmd: 'cancel_batch', id: nextId('cancel') });
   });
 
-  window.vocality.onStatus((status) => {
+  window.verbatim.onStatus((status) => {
     dispatch((s) => ({ ...s, daemon: { ...s.daemon, status } }));
   });
 
-  window.vocality.onEvent((event) => {
+  window.verbatim.onEvent((event) => {
     dispatch((s) => reduceEvent(s, event));
   });
 
   // electron-updater lifecycle — no-op in dev mode.
-  if (typeof window.vocality.onUpdateStatus === 'function') {
-    window.vocality.onUpdateStatus((payload) => {
+  if (typeof window.verbatim.onUpdateStatus === 'function') {
+    window.verbatim.onUpdateStatus((payload) => {
       updateStatus = payload;
       render();
     });
   }
 
   // Initial status snapshot
-  window.vocality.status().then((info) => {
+  window.verbatim.status().then((info) => {
     if (info && info.status) {
       dispatch((s) => ({
         ...s,

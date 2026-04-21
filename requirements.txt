@@ -1,4 +1,4 @@
-# Vocality ASR — pipeline dependencies.
+# Verbatim ASR — pipeline dependencies.
 #
 # torch + torchvision + torchaudio installed manually (CUDA-specific for 1080 Ti):
 #   pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 torchaudio==2.5.1+cu118 \

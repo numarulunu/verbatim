@@ -1,4 +1,4 @@
-# Vocality ASR
+# Verbatim ASR
 
 Local-only Python pipeline for transcribing vocal-lesson recordings into a
 named-entity pedagogical research corpus. Every utterance is attributed to
@@ -36,7 +36,7 @@ winget install Gyan.FFmpeg
 |------------------------|----------------|----------------------------------------|
 | `HUGGINGFACE_TOKEN`    | yes            | Pyannote model download                |
 | `ANTHROPIC_API_KEY`    | only for `api` | Polish engine (when `POLISH_ENGINE="api"`) |
-| `VOCALITY_ROOT`        | optional       | Override project root                  |
+| `VERBATIM_ROOT`        | optional       | Override project root                  |
 
 For `POLISH_ENGINE="cli"`: Claude Code CLI must be installed and logged in.
 

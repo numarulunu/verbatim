@@ -29,10 +29,10 @@ build/
 # (build/ffmpeg/ is the cache for scripts/fetch-ffmpeg.js; never tracked)
 
 # --- Electron wrapper ---
-vocality-electron/node_modules/
-vocality-electron/dist/
-vocality-electron/engine/vocality-engine.exe
-vocality-electron/engine/_internal/
+verbatim/node_modules/
+verbatim/dist/
+verbatim/engine/verbatim-engine.exe
+verbatim/engine/_internal/
 
 # --- Binary assets (source media lives in Material/, never committed) ---
 Material/

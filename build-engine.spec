@@ -1,20 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for the Vocality engine daemon.
+PyInstaller spec for the Verbatim engine daemon.
 
-Builds a one-folder bundle at `vocality-electron/engine/vocality-engine/`
+Builds a one-folder bundle at `verbatim/engine/verbatim-engine/`
 that electron-builder's `extraResources` copies into the installer.
 
 Run from repo root:
     pip install pyinstaller
-    pyinstaller --noconfirm --distpath vocality-electron build-engine.spec
+    pyinstaller --noconfirm --distpath verbatim build-engine.spec
 
 Expected output (COLLECT name='engine' sits under distpath):
-    vocality-electron/engine/vocality-engine.exe
-    vocality-electron/engine/_internal/             (Python runtime + deps)
+    verbatim/engine/verbatim-engine.exe
+    verbatim/engine/_internal/             (Python runtime + deps)
 
-The runtime helper `resolveEngineCommand` in vocality-electron/ expects
-`engine/vocality-engine.exe` at exactly that path.
+The runtime helper `resolveEngineCommand` in verbatim/ expects
+`engine/verbatim-engine.exe` at exactly that path.
 
 Note: PyInstaller cannot statically bundle the ML models themselves (too
 large, downloaded to a cache dir at first run). The user's HF_TOKEN must
@@ -104,14 +104,14 @@ for pkg in _METADATA:
         print(f"[build-engine] WARN: copy_metadata({pkg!r}) failed: {exc}")
 
 
-# Bundle ffmpeg + ffprobe next to vocality-engine.exe so audio-separator
+# Bundle ffmpeg + ffprobe next to verbatim-engine.exe so audio-separator
 # and utils.audio_qc don't need a system-installed ffmpeg. Populated by
 # `node scripts/fetch-ffmpeg.js`.
 _FFMPEG_DIR = os.path.join('build', 'ffmpeg', 'bin')
 for _name in ('ffmpeg.exe', 'ffprobe.exe'):
     _p = os.path.join(_FFMPEG_DIR, _name)
     if os.path.exists(_p):
-        # '.' = dest relative to the COLLECT root (sits beside vocality-engine.exe).
+        # '.' = dest relative to the COLLECT root (sits beside verbatim-engine.exe).
         binaries.append((_p, '.'))
         print(f"[build-engine] bundled {_p}")
     else:
@@ -183,7 +183,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='vocality-engine',
+    name='verbatim-engine',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -204,6 +204,6 @@ coll = COLLECT(
     upx=False,
     upx_exclude=[],
     # Place everything under {distpath}/engine/ so the Electron runtime
-    # helper finds vocality-engine.exe at the path it resolves.
+    # helper finds verbatim-engine.exe at the path it resolves.
     name='engine',
 )

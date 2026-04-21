@@ -1,5 +1,5 @@
 """
-Vocality engine daemon — stdin/stdout JSON entry point.
+Verbatim engine daemon — stdin/stdout JSON entry point.
 
 GATE 4 SCAFFOLD. Only handles `ping` and `shutdown`; responds to every other
 command with an `unknown_command` error event. Gates 5+ add the real
@@ -90,7 +90,7 @@ def _configure_logging() -> None:
     root.addHandler(stream)
 
 
-log = logging.getLogger("vocality.daemon")
+log = logging.getLogger("verbatim.daemon")
 
 
 # ---------------------------------------------------------------------------

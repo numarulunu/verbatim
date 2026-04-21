@@ -9,43 +9,43 @@
 const path = require('node:path');
 
 /**
- * Resolve where `vocality-engine.exe` lives, whether running from source
+ * Resolve where `verbatim-engine.exe` lives, whether running from source
  * or from a packaged electron-builder installer.
  *
  * Packaged: electron-builder `extraResources` copies `engine/` into
  *   `process.resourcesPath/engine/`.
- * Development: the dev runs `pyinstaller ... --distpath vocality-electron/engine`,
- *   producing `<project>/engine/vocality-engine.exe` sibling to this file.
+ * Development: the dev runs `pyinstaller ... --distpath verbatim/engine`,
+ *   producing `<project>/engine/verbatim-engine.exe` sibling to this file.
  *
  * Arguments are injected so the function stays pure.
  */
 function resolveEnginePath(isPackaged, resourcesPath, moduleDirname) {
   if (isPackaged) {
-    return path.join(resourcesPath, 'engine', 'vocality-engine.exe');
+    return path.join(resourcesPath, 'engine', 'verbatim-engine.exe');
   }
-  return path.join(moduleDirname, 'engine', 'vocality-engine.exe');
+  return path.join(moduleDirname, 'engine', 'verbatim-engine.exe');
 }
 
 /**
  * Where the daemon-created user-data tree lives. Brief §3 mandates it stay
  * OUTSIDE Electron's userData because auto-updater may wipe userData.
  *
- * Defaults to %LOCALAPPDATA%\Vocality\data on Windows; the user may override
+ * Defaults to %LOCALAPPDATA%\Verbatim\data on Windows; the user may override
  * via the Settings panel (Gate 6). On first run, main.js reads a pointer
- * from userData/vocality-settings.json that records the chosen path.
+ * from userData/verbatim-settings.json that records the chosen path.
  */
 function defaultDataDir(localAppData) {
   if (!localAppData) {
     throw new Error('defaultDataDir requires LOCALAPPDATA');
   }
-  return path.join(localAppData, 'Vocality', 'data');
+  return path.join(localAppData, 'Verbatim', 'data');
 }
 
 /**
  * Decide how to invoke the engine based on the environment.
  *
  * Packaged builds ship a PyInstaller folder at `resources/engine/` with a
- * single `vocality-engine.exe` entry point. Development runs against the
+ * single `verbatim-engine.exe` entry point. Development runs against the
  * repo root's `.venv/Scripts/python.exe engine_daemon.py`.
  *
  * Arguments injected so this stays pure.
@@ -53,7 +53,7 @@ function defaultDataDir(localAppData) {
 function resolveEngineCommand(isPackaged, resourcesPath, moduleDirname) {
   if (isPackaged) {
     return {
-      command: path.join(resourcesPath, 'engine', 'vocality-engine.exe'),
+      command: path.join(resourcesPath, 'engine', 'verbatim-engine.exe'),
       args: [],
       cwd: path.join(resourcesPath, 'engine'),
     };

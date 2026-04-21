@@ -206,7 +206,7 @@ def cmd_merge(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Vocality person registry.")
+    parser = argparse.ArgumentParser(description="Verbatim person registry.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("register", help="Create a new person record.")

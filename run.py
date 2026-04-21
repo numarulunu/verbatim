@@ -1,5 +1,5 @@
 """
-Vocality ASR — asyncio orchestrator.
+Verbatim ASR — asyncio orchestrator.
 
 Normal mode:
   1. preflight (disk, HF token, ffmpeg, GPU capability)
@@ -521,7 +521,7 @@ def _meta_from_transcript(transcript: dict):
 # ---------------------------------------------------------------------------
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Vocality ASR pipeline orchestrator.")
+    p = argparse.ArgumentParser(description="Verbatim ASR pipeline orchestrator.")
     p.add_argument("--redo", action="store_true",
                    help="Reprocess already-polished transcripts with the current voiceprint DB.")
     p.add_argument("--threshold", type=int, default=REDO_THRESHOLD_SESSIONS,
