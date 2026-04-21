@@ -63,17 +63,24 @@ Top-level `"mfa_aligned": true` is also set.
 
 `mfa_align.py` rejects MFA output whose word overlap with the existing `words_wav2vec2` is below 95%. Rejection leaves the polished JSON untouched (`words_mfa` absent, `mfa_aligned` stays false). This happens when MFA's pronunciation dictionary cannot resolve enough of the transcript — usually music-terminology gaps. Extend `mfa/mfa_custom_dict.yaml` when you observe it.
 
-## Custom dictionary
+## Custom dictionary (music terminology)
 
-`mfa/mfa_custom_dict.yaml` ships phoneme spellings for vocal-pedagogy terms that MFA's default English dictionary doesn't know (passaggio, appoggio, coloratura, squillo, portamento, chiaroscuro, bel canto, etc). The path is read from `config.MFA_DICT`.
+`mfa/mfa_custom_dict.yaml` holds phoneme spellings for vocal-pedagogy terms MFA's default English dictionary doesn't know (passaggio, appoggio, coloratura, squillo, portamento, chiaroscuro, bel canto, etc). It is currently a **reference document**, not wired into the default alignment flow — `mfa_align.py` uses `english_mfa` as the dictionary by default.
 
-Extend it when a new session's transcript contains a term MFA marks as OOV (check MFA's stderr — it lists OOV words). Add an entry like:
+To activate music-terminology support, convert the YAML to MFA's plain-text `.dict` format (one word + space-separated ARPAbet phones per line), merge it with `english_mfa`'s default dictionary, and pass the merged path via `--dictionary`:
 
-```yaml
-tessitura: [t, eh, s, ih, t, uh, r, ah]
+```bash
+# Locate english_mfa's dictionary file
+mfa model inspect dictionary english_mfa
+
+# Create a merged .dict manually (example)
+cat ~/Documents/MFA/pretrained_models/dictionary/english_mfa.dict mfa/music_terms.dict > mfa/merged.dict
+
+# Align with the merged dict
+python mfa_align.py 2024-03-15_ionut__madalina_en --dictionary mfa/merged.dict
 ```
 
-Phones follow MFA's English phone set (ARPAbet-like).
+MFA will also mark any OOV (out-of-vocabulary) words in its stderr — extend your `.dict` file as you see new terms fail to align.
 
 ## Troubleshooting
 

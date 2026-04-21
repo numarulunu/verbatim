@@ -6,8 +6,9 @@ Validates its own output: if <95% word overlap with the existing wav2vec2
 transcript, MFA output is rejected and the original words_wav2vec2 is
 retained. Otherwise a `words_mfa` field is added to each polished segment.
 
-Custom dictionary in `mfa/mfa_custom_dict.yaml` covers music terminology
-(passaggio, appoggio, coloratura, ...).
+The default dictionary is MFA's built-in `english_mfa`. Pass `--dictionary`
+to override with a custom `.dict` path. `mfa/mfa_custom_dict.yaml` holds
+music-terminology phonemes for future use — not wired in by default.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from config import ACAPELLA_DIR, MFA_DICT, POLISHED_DIR
+from config import ACAPELLA_DIR, POLISHED_DIR
 from utils.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
@@ -28,9 +29,14 @@ log = logging.getLogger(__name__)
 WORD_OVERLAP_THRESHOLD = 0.95
 MFA_TIMEOUT_S = 900  # 15 minutes per file; realistic for 10-60 min audio
 DEFAULT_ACOUSTIC_MODEL = "english_mfa"
+DEFAULT_DICTIONARY = "english_mfa"  # MFA's built-in English dict; run `mfa model download dictionary english_mfa` once
 
 
-def align_one(file_id: str, acoustic_model: str = DEFAULT_ACOUSTIC_MODEL) -> bool:
+def align_one(
+    file_id: str,
+    acoustic_model: str = DEFAULT_ACOUSTIC_MODEL,
+    dictionary: str = DEFAULT_DICTIONARY,
+) -> bool:
     """
     Align a single polished transcript via MFA. Returns True on success, False
     otherwise (missing inputs, MFA error, timeout, or <95% word overlap).
@@ -74,7 +80,7 @@ def align_one(file_id: str, acoustic_model: str = DEFAULT_ACOUSTIC_MODEL) -> boo
         cmd = [
             "mfa", "align",
             str(tmp / "corpus"),
-            str(MFA_DICT),
+            dictionary,
             acoustic_model,
             str(output_dir),
             "--clean",
@@ -124,11 +130,15 @@ def align_one(file_id: str, acoustic_model: str = DEFAULT_ACOUSTIC_MODEL) -> boo
     return True
 
 
-def align_many(file_ids: list[str], acoustic_model: str = DEFAULT_ACOUSTIC_MODEL) -> tuple[int, int]:
+def align_many(
+    file_ids: list[str],
+    acoustic_model: str = DEFAULT_ACOUSTIC_MODEL,
+    dictionary: str = DEFAULT_DICTIONARY,
+) -> tuple[int, int]:
     """Align multiple files. Returns (ok_count, total)."""
     ok = 0
     for fid in file_ids:
-        if align_one(fid, acoustic_model=acoustic_model):
+        if align_one(fid, acoustic_model=acoustic_model, dictionary=dictionary):
             ok += 1
     return ok, len(file_ids)
 
@@ -239,6 +249,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help="Report word-overlap on polished JSONs that already have words_mfa; do not call mfa")
     p.add_argument("--acoustic-model", default=DEFAULT_ACOUSTIC_MODEL,
                    help="MFA acoustic model name (default: english_mfa)")
+    p.add_argument("--dictionary", default=DEFAULT_DICTIONARY,
+                   help=f"MFA dictionary (name or .dict path; default: {DEFAULT_DICTIONARY})")
     return p
 
 
@@ -263,14 +275,16 @@ def main() -> None:
         if not fids:
             log.error("no polished files found for student %r", args.student)
             sys.exit(1)
-        ok, total = align_many(fids, acoustic_model=args.acoustic_model)
+        ok, total = align_many(fids, acoustic_model=args.acoustic_model,
+                                dictionary=args.dictionary)
         log.info("aligned %d / %d", ok, total)
         sys.exit(0 if ok == total else 1)
 
     if not args.file_id:
         log.error("provide a file_id, --student <id>, or --verify")
         sys.exit(2)
-    ok = align_one(args.file_id, acoustic_model=args.acoustic_model)
+    ok = align_one(args.file_id, acoustic_model=args.acoustic_model,
+                    dictionary=args.dictionary)
     sys.exit(0 if ok else 1)
 
 
