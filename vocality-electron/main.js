@@ -12,12 +12,42 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
 const { EngineManager, STATUS } = require('./engine-manager.js');
 const { resolveEngineCommand } = require('./runtime-helpers.js');
 
 let mainWindow = null;
 let engine = null;
+
+function settingsFilePath() {
+  return path.join(app.getPath('userData'), 'vocality-settings.json');
+}
+
+function loadSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveSettings(settings) {
+  const p = settingsFilePath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  const tmp = p + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(settings || {}, null, 2));
+  fs.renameSync(tmp, p);
+}
+
+function daemonEnv() {
+  const settings = loadSettings();
+  const env = { ...process.env };
+  if (settings.hf_token)          env.HF_TOKEN = settings.hf_token;
+  if (settings.anthropic_api_key) env.ANTHROPIC_API_KEY = settings.anthropic_api_key;
+  if (settings.data_dir)          env.VOCALITY_ROOT = settings.data_dir;
+  return env;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -57,7 +87,7 @@ async function startEngine() {
     pythonPath: command,
     args,
     cwd,
-    env: process.env,
+    env: daemonEnv(),
   });
   engine.onEvent((evt) => sendToRenderer('vocality:event', evt));
   engine.onStatus((s) => sendToRenderer('vocality:status', s));
@@ -88,6 +118,11 @@ function registerIpcHandlers() {
   ipcMain.handle('vocality:restart', async () => {
     if (engine) await engine.stop();
     await startEngine();
+    return { ok: true };
+  });
+  ipcMain.handle('vocality:get-settings', () => loadSettings());
+  ipcMain.handle('vocality:save-settings', (_evt, settings) => {
+    saveSettings(settings);
     return { ok: true };
   });
 }

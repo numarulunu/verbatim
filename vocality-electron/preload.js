@@ -47,4 +47,11 @@ contextBridge.exposeInMainWorld('vocality', {
 
   /** Restart the daemon (after crash or for a fresh run). */
   restart: () => ipcRenderer.invoke('vocality:restart'),
+
+  /** Read the persisted user settings (HF/Anthropic tokens, data dir). */
+  getSettings: () => ipcRenderer.invoke('vocality:get-settings'),
+
+  /** Persist settings to userData and return {ok: true}. Caller usually
+   *  follows up with vocality.restart() so the daemon picks them up. */
+  saveSettings: (s) => ipcRenderer.invoke('vocality:save-settings', s),
 });

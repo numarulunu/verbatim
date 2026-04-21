@@ -93,6 +93,26 @@ html, body {
   outline-offset: -2px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--border);
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 3px;
+  transition: color 120ms ease, background 120ms ease;
+}
+.icon-btn:hover { color: var(--fg); background: var(--bg-active); }
+.icon-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
 /* ── Main ────────────────────────────────────────────────────────────── */
 
 .app-main {

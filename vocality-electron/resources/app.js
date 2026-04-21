@@ -81,6 +81,9 @@
   const redoSummary = redoView.querySelector('.redo-summary');
   const redoFilesEl = redoView.querySelector('.redo-files');
 
+  // Header actions
+  const settingsBtn = document.querySelector('[data-action="open-settings"]');
+
   // Modal
   const modalEl = document.querySelector('.modal');
   const modalTitle = modalEl.querySelector('.modal-title');
@@ -469,6 +472,37 @@
           old_id: person.id, new_id: newId,
         });
         activePersonId = newId;
+      },
+    });
+  });
+
+  settingsBtn.addEventListener('click', async () => {
+    let existing = {};
+    try { existing = await window.vocality.getSettings(); } catch (_) { /* first launch */ }
+    openModal({
+      title: 'Settings',
+      fields: [
+        {
+          name: 'hf_token', type: 'password', label: 'HF_TOKEN',
+          value: existing.hf_token || '',
+        },
+        {
+          name: 'anthropic_api_key', type: 'password', label: 'ANTHROPIC_API_KEY',
+          value: existing.anthropic_api_key || '',
+        },
+        {
+          name: 'data_dir', label: 'Data directory (VOCALITY_ROOT override)',
+          value: existing.data_dir || '',
+        },
+      ],
+      onSubmit: async (values) => {
+        await window.vocality.saveSettings({
+          hf_token: (values.hf_token || '').trim(),
+          anthropic_api_key: (values.anthropic_api_key || '').trim(),
+          data_dir: (values.data_dir || '').trim(),
+        });
+        // Restart the daemon so it picks up new env.
+        try { await window.vocality.restart(); } catch (_) { /* surfaced via onStatus */ }
       },
     });
   });
