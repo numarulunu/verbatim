@@ -27,6 +27,12 @@ session_map.json
 dist/
 build/
 
+# --- Electron wrapper ---
+vocality-electron/node_modules/
+vocality-electron/dist/
+vocality-electron/engine/vocality-engine.exe
+vocality-electron/engine/_internal/
+
 # --- Binary assets (source media lives in Material/, never committed) ---
 Material/
 *.mp4

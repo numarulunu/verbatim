@@ -1,0 +1,44 @@
+/*
+ * Vocality — dark dense aesthetic (brief §5). Gate-3 scaffold only.
+ * Gate 6 fills in tab switcher, batch view, registry table, redo query
+ * builder, settings modal.
+ */
+
+:root {
+  --bg: #111;
+  --bg-raised: #181818;
+  --fg: #e6e6e6;
+  --fg-muted: #8a8a8a;
+  --border: #2a2a2a;
+  --accent: #7aa2f7;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --error: #f7768e;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+main { padding: 24px; }
+
+h1 {
+  margin: 0 0 8px;
+  font-weight: 500;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+p {
+  margin: 0;
+  color: var(--fg-muted);
+}

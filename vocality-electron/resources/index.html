@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- CSP per brief §3: local-only, no eval, no remote content. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+  <title>Vocality</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Gate-3 scaffold: blank shell. Three-view layout lands in Gate 6. -->
+  <main>
+    <h1>Vocality</h1>
+    <p id="status">scaffold v0.1.0 — daemon not yet connected</p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

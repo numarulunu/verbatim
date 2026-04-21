@@ -1,0 +1,33 @@
+# electron-builder config. Brief §9.
+#
+# Gate-3 scaffold: values are final-intent, but the build itself isn't run
+# until Gate 8. `npm run build` will work once `engine/vocality-engine.exe`
+# exists (Gate 5).
+
+appId: ro.vocality.asr
+productName: Vocality
+
+directories:
+  output: dist
+
+win:
+  target: nsis
+  icon: resources/icon.ico  # icon must be dropped here before packaging (Gate 8)
+
+nsis:
+  oneClick: false
+  perMachine: false                     # per-user install; no admin required
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+extraResources:
+  - from: engine/
+    to: engine/
+
+# Auto-update via GitHub Releases (brief §9). Private repos require a
+# GH_TOKEN; public repos work anonymously.
+publish:
+  provider: github
+  owner: numarulunu
+  repo: vocality-asr
