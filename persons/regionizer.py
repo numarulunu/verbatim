@@ -145,8 +145,13 @@ def classify_segment(
     if sp_lo <= median <= sp_hi and cov <= _SPEAKING_PITCH_COV:
         return "speaking"
 
-    # Sustained-pitch detection — frame_period=10ms for pyworld, 512/sr for librosa.
-    frame_s = 512.0 / sr
+    # Sustained-pitch detection. Frame period depends on the extractor:
+    # pyworld uses a fixed 10ms period (regionizer.extract_pitch sets
+    # frame_period=10.0); librosa.pyin uses hop_length/sr.
+    if PITCH_EXTRACTOR == "pyworld":
+        frame_s = 0.010
+    else:
+        frame_s = 512.0 / sr
     if _has_sustained_pitch(f0, frame_s, SUSTAIN_MIN_SECONDS):
         return "sung_full"
 
