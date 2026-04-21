@@ -551,11 +551,49 @@ async def async_handle_process_batch(cmd, emit: Emit) -> None:
     successful = 0
     failures: list[dict[str, Any]] = []
 
-    for i, src in enumerate(files):
-        # Yield to the event loop so the stdin reader can pick up
-        # cancel_batch / list_persons while this batch is in flight. In
-        # dry_run mode there are no other `await` points per iteration,
-        # so without this the read loop would be starved.
+    # Pre-pass: stage-1 vocal isolation is load-bearing and must run for
+    # every file before we free VRAM and load the stage-2 models. The pre-
+    # pass emits isolation phase events per file (but no file_started/
+    # complete — those bracket the main pass).
+    pairs: list[tuple[Path, Path]] = []
+    if dry_run:
+        pairs = [(src, src) for src in files]
+    else:
+        import stage1_isolate
+        for i, src in enumerate(files):
+            await asyncio.sleep(0)  # yield so the read loop can service cancel
+            try:
+                cancellation.cancel_check()
+            except cancellation.CancelledError:
+                log.info("process_batch: cancelled during stage-1 at file index %d", i)
+                break
+            try:
+                reporter.phase_started(
+                    file_index=i, phase="isolation",
+                    phase_index=_phase_index("isolation"),
+                )
+                t_iso = time.monotonic()
+                acap = await asyncio.to_thread(stage1_isolate.isolate_one, src)
+                reporter.phase_complete(
+                    file_index=i, phase="isolation",
+                    elapsed_s=time.monotonic() - t_iso,
+                )
+                pairs.append((src, acap))
+            except Exception as exc:  # noqa: BLE001 — per-file error containment
+                log.exception("process_batch: isolation failed for %s", src.name)
+                failures.append({"file": src.name, "reason": f"isolation: {exc}"})
+                reporter.error(
+                    error_type="daemon_crash",
+                    message=f"isolation {type(exc).__name__}: {exc}",
+                    recoverable=True,
+                    file=str(src),
+                )
+        await asyncio.to_thread(stage1_isolate.teardown_separator)
+
+    gpu_sem = asyncio.Semaphore(1)
+    from run import _process_one
+
+    for i, (src, acap) in enumerate(pairs):
         await asyncio.sleep(0)
         try:
             cancellation.cancel_check()
@@ -563,7 +601,7 @@ async def async_handle_process_batch(cmd, emit: Emit) -> None:
             log.info("process_batch: cancelled before file index %d", i)
             break
 
-        reporter.file_started(file=str(src), index=i, total=len(files))
+        reporter.file_started(file=str(src), index=i, total=len(pairs))
 
         try:
             if dry_run:
@@ -571,9 +609,9 @@ async def async_handle_process_batch(cmd, emit: Emit) -> None:
                 output_path = str(src) + ".dryrun"
                 stats: dict[str, Any] = {"ok": True, "dry_run": True}
             else:
-                ok_one, output_path, stats = await asyncio.to_thread(
-                    _process_one_sync, src,
-                )
+                ok_one = await _process_one(src, acap, gpu_sem, reporter=reporter, file_index=i)
+                stats = {"ok": bool(ok_one)}
+                output_path = _polished_path_for(src)
 
             if ok_one:
                 successful += 1
@@ -615,40 +653,22 @@ def _run_preflight(options: dict) -> None:
     preflight(skip_disk_check=bool(options.get("skip_disk_check", False)))
 
 
-def _process_one_sync(src: Path) -> tuple[bool, str, dict]:
-    """Blocking wrapper around `run._process_one` so the daemon can call
-    it via `asyncio.to_thread`. Does stage 1 → stage 3 for a single file.
-
-    Returns (ok, output_path, stats). On any internal failure, ok=False
-    and the exception has already been logged.
-    """
-    import asyncio as _asyncio
-
-    from config import POLISHED_DIR
-    from filename_parser import parse as parse_filename
-    from run import _process_one
-    import stage1_isolate
-
+def _polished_path_for(src: Path) -> str:
+    """Best-effort resolution of the output polished-JSON path. Returns ""
+    when the filename doesn't parse."""
     try:
-        acap = stage1_isolate.isolate_one(src)
-    finally:
-        stage1_isolate.teardown_separator()
-
-    gpu_sem = _asyncio.Semaphore(1)
-    loop = _asyncio.new_event_loop()
-    try:
-        ok_one = loop.run_until_complete(_process_one(src, acap, gpu_sem))
-    finally:
-        loop.close()
-
-    try:
-        meta = parse_filename(src)
+        from config import POLISHED_DIR
         from filename_parser import file_id as file_id_for
-        fid = file_id_for(meta)
-        output = str(POLISHED_DIR / f"{fid}.json")
-    except Exception:  # noqa: BLE001
-        output = ""
-    return bool(ok_one), output, {"ok": bool(ok_one)}
+        from filename_parser import parse as parse_filename
+        meta = parse_filename(src)
+        return str(POLISHED_DIR / f"{file_id_for(meta)}.json")
+    except Exception:  # noqa: BLE001 — best-effort
+        return ""
+
+
+def _phase_index(name: str) -> int:
+    from ipc_protocol import PHASE_NAMES
+    return PHASE_NAMES.index(name) + 1
 
 
 async def async_handle_redo_batch(cmd, emit: Emit) -> None:

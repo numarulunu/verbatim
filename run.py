@@ -45,9 +45,43 @@ from config import (
 )
 from filename_parser import FilenameParseError, file_id as fileid_from_meta, parse as parse_filename
 from hw_clamp import pin_to_p_cores, verify_cuda_compute_capability
+from utils import cancellation
 from utils.atomic_write import atomic_write_json
+from utils.reporter import NULL_REPORTER, Reporter
 
 log = logging.getLogger(__name__)
+
+
+# Phase-index lookup shared with ipc_protocol. 1-based so phase events
+# match the protocol's `phase_index` field naturally.
+def _phase_index(name: str) -> int:
+    from ipc_protocol import PHASE_NAMES
+    return PHASE_NAMES.index(name) + 1
+
+
+async def _timed_phase(reporter: Reporter, file_index: int, name: str, coro):
+    """Emit phase_started / phase_complete around an async step.
+
+    The awaited coroutine may raise. On exception we skip phase_complete
+    so the caller sees a partial sequence — debugging signal that that
+    specific phase failed.
+    """
+    import time as _time
+    reporter.phase_started(file_index=file_index, phase=name, phase_index=_phase_index(name))
+    t0 = _time.monotonic()
+    result = await coro
+    reporter.phase_complete(file_index=file_index, phase=name, elapsed_s=_time.monotonic() - t0)
+    return result
+
+
+def _timed_phase_sync(reporter: Reporter, file_index: int, name: str, fn, *args, **kwargs):
+    """Synchronous counterpart — for inline stage calls inside worker threads."""
+    import time as _time
+    reporter.phase_started(file_index=file_index, phase=name, phase_index=_phase_index(name))
+    t0 = _time.monotonic()
+    result = fn(*args, **kwargs)
+    reporter.phase_complete(file_index=file_index, phase=name, elapsed_s=_time.monotonic() - t0)
+    return result
 
 SUPPORTED_EXTS = frozenset((".mp4", ".m4a", ".mp3", ".wav", ".webm", ".ogg", ".flac"))
 
@@ -137,8 +171,15 @@ async def _process_one(
     source: Path,
     acapella: Path,
     gpu_sem: asyncio.Semaphore,
+    reporter: Reporter | None = None,
+    file_index: int = 0,
 ) -> bool:
-    """Return True on success. Errors are logged and contained."""
+    """Return True on success. Errors are logged and contained.
+
+    `reporter` lets the Electron daemon surface per-phase progress. CLI
+    callers leave it None and get the silent NullReporter.
+    """
+    reporter = reporter or NULL_REPORTER
     try:
         meta = parse_filename(source)
     except FilenameParseError as exc:
@@ -148,21 +189,38 @@ async def _process_one(
 
     try:
         # Phases 3, 4 — CPU-only, run off the GPU semaphore.
-        audio = await asyncio.to_thread(_decode_acapella, acapella)
-        vad_spans = await asyncio.to_thread(_run_vad, audio)
+        cancellation.cancel_check()
+        audio = await _timed_phase(
+            reporter, file_index, "decode",
+            asyncio.to_thread(_decode_acapella, acapella),
+        )
+        cancellation.cancel_check()
+        vad_spans = await _timed_phase(
+            reporter, file_index, "vad",
+            asyncio.to_thread(_run_vad, audio),
+        )
 
-        # Phases 5, 6, 7 — GPU-serialized.
+        # Phases 5, 6, 7 — GPU-serialized. _transcribe_align_diarize emits
+        # its own asr / alignment / diarization phase events inline.
+        cancellation.cancel_check()
         async with gpu_sem:
             labeled, cluster_emb = await asyncio.to_thread(
-                _transcribe_align_diarize, audio, meta.language, vad_spans
+                _transcribe_align_diarize, audio, meta.language, vad_spans,
+                reporter, file_index,
             )
 
-        # Phases 8, 8b, 9, 10 — CPU + LLM.
+        # Phases 8, 8b, 9, 10 — CPU + LLM. _finalize emits identification /
+        # verification / polish / corpus_update phase events.
+        cancellation.cancel_check()
         await asyncio.to_thread(
             _finalize, source, acapella, audio, labeled, cluster_emb, meta, fid,
+            reporter, file_index,
         )
         log.info("done: %s", fid)
         return True
+    except cancellation.CancelledError:
+        # Propagate — the batch handler breaks the outer loop.
+        raise
     except Exception as exc:  # noqa: BLE001 — orchestrator must contain per-file errors
         log.exception("failed: %s -> %s", fid, exc)
         return False
@@ -187,14 +245,34 @@ def _run_vad(audio):
     return silero_vad.speech_timestamps(audio, sr=16000)
 
 
-def _transcribe_align_diarize(audio, language: str, vad_spans):
+def _transcribe_align_diarize(
+    audio,
+    language: str,
+    vad_spans,
+    reporter: Reporter | None = None,
+    file_index: int = 0,
+):
     import stage2_transcribe_diarize as st2
+    reporter = reporter or NULL_REPORTER
 
-    raw = st2.transcribe(audio, language=language, vad_timestamps=vad_spans)
-    aligned = st2.align(audio, raw["segments"], language)
+    raw = _timed_phase_sync(
+        reporter, file_index, "asr",
+        st2.transcribe, audio, language=language, vad_timestamps=vad_spans,
+    )
+    aligned = _timed_phase_sync(
+        reporter, file_index, "alignment",
+        st2.align, audio, raw["segments"], language,
+    )
+
+    reporter.phase_started(file_index=file_index, phase="diarization",
+                           phase_index=_phase_index("diarization"))
+    import time as _time
+    t0 = _time.monotonic()
     diar = st2.diarize(audio)
     labeled = st2.attach_speaker_labels(aligned, diar)
     cluster_emb = st2.cluster_embeddings_from_segments(labeled, audio)
+    reporter.phase_complete(file_index=file_index, phase="diarization",
+                            elapsed_s=_time.monotonic() - t0)
     return labeled, cluster_emb
 
 
@@ -206,16 +284,29 @@ def _finalize(
     cluster_emb: dict[str, Any],
     meta,
     fid: str,
+    reporter: Reporter | None = None,
+    file_index: int = 0,
 ) -> None:
     import stage3_postprocess as st3
+    reporter = reporter or NULL_REPORTER
 
-    identified, label_to_person = st3.identify_speakers(
-        labeled_segments, cluster_emb, audio, 16000, meta,
+    identified, label_to_person = _timed_phase_sync(
+        reporter, file_index, "identification",
+        st3.identify_speakers, labeled_segments, cluster_emb, audio, 16000, meta,
     )
-    verified = st3.run_verification(
-        identified, cluster_emb, label_to_person, audio, 16000,
+    verified = _timed_phase_sync(
+        reporter, file_index, "verification",
+        st3.run_verification, identified, cluster_emb, label_to_person, audio, 16000,
     )
-    polished = st3.polish(verified, meta.language)
+    polished = _timed_phase_sync(
+        reporter, file_index, "polish",
+        st3.polish, verified, meta.language,
+    )
+
+    reporter.phase_started(file_index=file_index, phase="corpus_update",
+                           phase_index=_phase_index("corpus_update"))
+    import time as _time
+    t0 = _time.monotonic()
     st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta)
 
     from utils.audio_qc import overlap_ratio, source_codec_info
@@ -243,6 +334,8 @@ def _finalize(
     }
     st3.stamp_db_state(transcript)
     st3.finalize(transcript, POLISHED_DIR / f"{fid}.json")
+    reporter.phase_complete(file_index=file_index, phase="corpus_update",
+                            elapsed_s=_time.monotonic() - t0)
 
 
 def _display(person) -> str:
