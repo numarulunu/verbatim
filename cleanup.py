@@ -52,7 +52,7 @@ def find_safe_to_delete() -> list[Path]:
         file_id = polished.stem
         if not verify_polished(polished):
             log.warning(
-                "polished %s fails schema — skipping cleanup for this file",
+                "polished %s fails schema - skipping cleanup for this file",
                 polished.name,
             )
             continue

@@ -120,12 +120,12 @@ def polish_chunk_cli(chunk: list[dict], language: str, glossary: dict) -> list[d
             errors="replace",
         )
     except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        log.error("polish cli failed: %s — retaining raw chunk", exc)
+        log.error("polish cli failed: %s - retaining raw chunk", exc)
         return [dict(s, polished=False) for s in chunk]
 
     if result.returncode != 0:
         log.error(
-            "polish cli exited %d: %s — retaining raw chunk",
+            "polish cli exited %d: %s - retaining raw chunk",
             result.returncode, result.stderr[:200],
         )
         return [dict(s, polished=False) for s in chunk]
@@ -173,7 +173,7 @@ async def polish_chunk_api(
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as exc:  # noqa: BLE001
-        log.error("polish api failed: %s — retaining raw chunk", exc)
+        log.error("polish api failed: %s - retaining raw chunk", exc)
         return [dict(s, polished=False) for s in chunk]
 
     text = ""

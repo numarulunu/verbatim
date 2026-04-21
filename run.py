@@ -287,7 +287,7 @@ async def orchestrate_normal(skip_disk_check: bool = False) -> int:
     inputs = discover_inputs(MATERIAL_DIR)
     inputs = [p for p in inputs if needs_processing(p)]
     if not inputs:
-        log.info("nothing to do — all inputs already have polished transcripts.")
+        log.info("nothing to do - all inputs already have polished transcripts.")
         return 0
 
     log.info("found %d file(s) to process.", len(inputs))
