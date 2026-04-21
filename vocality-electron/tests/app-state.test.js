@@ -12,7 +12,7 @@ const {
   setView,
   ERROR_LOG_CAP,
   WARNING_LOG_CAP,
-} = require('../app-state.js');
+} = require('../resources/app-state.js');
 
 // ─── Initial shape ─────────────────────────────────────────────────────────
 

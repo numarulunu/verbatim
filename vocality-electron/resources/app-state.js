@@ -329,4 +329,10 @@ function setView(state, view) {
   return { ...state, view };
 }
 
-module.exports = { initialState, reduceEvent, setView, ERROR_LOG_CAP, WARNING_LOG_CAP, PHASE_COUNT };
+// Dual-mode: Node CommonJS (tests) + browser global (renderer via <script>).
+const __exports = { initialState, reduceEvent, setView, ERROR_LOG_CAP, WARNING_LOG_CAP, PHASE_COUNT };
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __exports;
+} else if (typeof window !== 'undefined') {
+  window.appState = __exports;
+}

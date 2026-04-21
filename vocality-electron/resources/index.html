@@ -21,7 +21,27 @@
 
     <main class="app-main">
       <section class="view" data-view="batch">
-        <div class="view-placeholder">Batch view — input list, per-file progress, start/cancel.</div>
+        <div class="batch-toolbar">
+          <input type="text" class="scan-path" value="Material" spellcheck="false"
+                 aria-label="Scan directory">
+          <button type="button" class="btn btn-secondary" data-action="scan">Scan</button>
+          <button type="button" class="btn btn-primary" data-action="start" disabled>Start batch</button>
+          <button type="button" class="btn btn-danger" data-action="cancel" disabled>Cancel</button>
+          <span class="batch-summary"></span>
+        </div>
+
+        <div class="batch-files"></div>
+        <template id="file-row-template">
+          <div class="file-row">
+            <div class="file-cell file-name"></div>
+            <div class="file-cell file-phase"></div>
+            <div class="file-cell file-progress">
+              <div class="file-progress-bar"></div>
+              <span class="file-progress-label"></span>
+            </div>
+            <div class="file-cell file-status"></div>
+          </div>
+        </template>
       </section>
       <section class="view" data-view="registry" hidden>
         <div class="view-placeholder">Registry view — persons, voiceprints, rename, merge.</div>
@@ -40,6 +60,7 @@
     </footer>
   </div>
 
+  <script src="app-state.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
