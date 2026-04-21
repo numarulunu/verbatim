@@ -33,6 +33,7 @@ class PersonRecord:
     region_session_counts: dict[str, int] = field(default_factory=dict)
     pitch_range_hz: tuple[float, float] | None = None
     collisions: list[str] = field(default_factory=list)
+    bootstrap_sessions_remaining: int = 3
 
 
 def to_dict(p: PersonRecord) -> dict:

@@ -274,6 +274,7 @@ def update_voice_libraries(
         avg_conf = (
             sum(per_person_confidences.get(pid, [])) / max(1, len(per_person_confidences.get(pid, [])))
         )
+        # Hard rejection: below-floor confidence never updates.
         if avg_conf < UPDATE_REJECTION_THRESHOLD:
             log.warning(
                 "voice library update rejected for %s: avg confidence %.2f < %.2f",
@@ -283,7 +284,25 @@ def update_voice_libraries(
         person = label_to_person.get(_first_label_for_pid(pid, label_to_person)) or _load_or_none(pid)
         if person is None:
             continue
+        # First-3-sessions poisoning guard (SMAC Finding #6). Bootstrap session 1
+        # has confidence=1.0 by construction (cluster IS this person). For the
+        # NEXT 2 sessions (bootstrap_sessions_remaining in {2, 1}), require
+        # real match confidence above NEW_PERSON_CONFIDENCE_GATE.
+        if (
+            0 < person.bootstrap_sessions_remaining < 3
+            and avg_conf < NEW_PERSON_CONFIDENCE_GATE
+        ):
+            log.warning(
+                "first-3-sessions gate: skipping update for %s (avg conf %.2f < %.2f); "
+                "run `enroll.py confirm %s <session_id>` to approve manually",
+                pid, avg_conf, NEW_PERSON_CONFIDENCE_GATE, pid,
+            )
+            continue
         _update_one_person(person, region_clips, per_person_durations[pid], meta, is_redo=is_redo)
+        # Decrement trust counter when a real update (not redo) lands.
+        if person.bootstrap_sessions_remaining > 0 and not is_redo:
+            person.bootstrap_sessions_remaining -= 1
+            registry.save(person)
 
     # Collision sweep after any updates.
     for a, b, score in check_collisions():
