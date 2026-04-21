@@ -54,4 +54,13 @@ contextBridge.exposeInMainWorld('vocality', {
   /** Persist settings to userData and return {ok: true}. Caller usually
    *  follows up with vocality.restart() so the daemon picks them up. */
   saveSettings: (s) => ipcRenderer.invoke('vocality:save-settings', s),
+
+  /** Subscribe to electron-updater lifecycle events. `kind` is one of
+   *  'checking' | 'available' | 'current' | 'downloading' | 'downloaded'
+   *  | 'error'. No events in dev mode. */
+  onUpdateStatus: (cb) => {
+    const listener = (_evt, payload) => cb(payload);
+    ipcRenderer.on('vocality:update-status', listener);
+    return () => ipcRenderer.removeListener('vocality:update-status', listener);
+  },
 });

@@ -42,6 +42,7 @@
   const statusLabel = document.querySelector('.status-label');
   const statusVersion = document.querySelector('.status-version');
   const statusLastError = document.querySelector('.status-last-error');
+  const statusUpdate = document.querySelector('.status-update');
   const tabs = Array.from(document.querySelectorAll('.tab'));
   const views = Array.from(document.querySelectorAll('.view'));
 
@@ -94,6 +95,7 @@
 
   let modalOnSubmit = null;
   let activePersonId = null;
+  let updateStatus = null;
 
   // ── Rendering ──────────────────────────────────────────────────────
 
@@ -122,6 +124,21 @@
     statusLastError.textContent = lastError
       ? `${lastError.error_type}: ${lastError.message}`
       : '';
+
+    // Update channel. Dev mode never fires these — the span stays blank.
+    if (!updateStatus) {
+      statusUpdate.textContent = '';
+    } else {
+      switch (updateStatus.kind) {
+        case 'checking':     statusUpdate.textContent = 'checking for update…'; break;
+        case 'current':      statusUpdate.textContent = ''; break;
+        case 'available':    statusUpdate.textContent = `update v${updateStatus.version} available`; break;
+        case 'downloading':  statusUpdate.textContent = `downloading update ${Math.round(updateStatus.percent || 0)}%`; break;
+        case 'downloaded':   statusUpdate.textContent = `update v${updateStatus.version} ready — restart to install`; break;
+        case 'error':        statusUpdate.textContent = `update error: ${updateStatus.message || ''}`; break;
+        default:             statusUpdate.textContent = '';
+      }
+    }
   }
 
   function renderBatchView() {
@@ -579,6 +596,14 @@
   window.vocality.onEvent((event) => {
     dispatch((s) => reduceEvent(s, event));
   });
+
+  // electron-updater lifecycle — no-op in dev mode.
+  if (typeof window.vocality.onUpdateStatus === 'function') {
+    window.vocality.onUpdateStatus((payload) => {
+      updateStatus = payload;
+      render();
+    });
+  }
 
   // Initial status snapshot
   window.vocality.status().then((info) => {

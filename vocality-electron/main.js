@@ -17,6 +17,17 @@ const path = require('node:path');
 const { EngineManager, STATUS } = require('./engine-manager.js');
 const { resolveEngineCommand } = require('./runtime-helpers.js');
 
+// electron-updater is an optional dependency at dev time (unused until
+// a packaged build hits an installed user's machine). Import lazily so
+// `npm start` in a fresh clone works even if node_modules is partial.
+function loadAutoUpdater() {
+  try {
+    return require('electron-updater').autoUpdater;
+  } catch (_) {
+    return null;
+  }
+}
+
 let mainWindow = null;
 let engine = null;
 
@@ -127,6 +138,48 @@ function registerIpcHandlers() {
   });
 }
 
+/**
+ * Wire electron-updater. No-op in dev (isPackaged=false) because the
+ * updater refuses to run against an unsigned, unpackaged app and the
+ * GitHub Releases endpoint has nothing to offer yet.
+ *
+ * Relays every lifecycle event to the renderer as
+ * {channel: 'vocality:update-status', kind, ...payload} so the UI can
+ * surface "Update available — downloading" / "Update ready to install"
+ * banners. Silent fallback if electron-updater isn't installed.
+ */
+function initAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[updater] skipped — dev mode');
+    return;
+  }
+  const autoUpdater = loadAutoUpdater();
+  if (!autoUpdater) {
+    console.warn('[updater] electron-updater not installed; auto-update disabled');
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console;
+
+  const relay = (kind, payload = {}) => {
+    sendToRenderer('vocality:update-status', { kind, ...payload });
+  };
+
+  autoUpdater.on('checking-for-update',    () => relay('checking'));
+  autoUpdater.on('update-available',       (info) => relay('available', { version: info.version }));
+  autoUpdater.on('update-not-available',   () => relay('current'));
+  autoUpdater.on('error',                  (err) => relay('error', { message: err && err.message }));
+  autoUpdater.on('download-progress',      (p) => relay('downloading', {
+    percent: p.percent, bytes_per_second: p.bytesPerSecond,
+  }));
+  autoUpdater.on('update-downloaded',      (info) => relay('downloaded', { version: info.version }));
+
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    console.warn('[updater] initial check failed:', err && err.message);
+  });
+}
+
 // Single-instance lock (brief §3). A second launch focuses the existing window.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -143,6 +196,7 @@ if (!gotLock) {
     registerIpcHandlers();
     createWindow();
     await startEngine();
+    initAutoUpdater();
   });
 
   app.on('window-all-closed', () => {
