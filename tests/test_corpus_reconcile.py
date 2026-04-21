@@ -101,3 +101,62 @@ def test_reconcile_adds_only_missing(tmp_project):
         "2025-08-07_vasquez__ionut_en",
         "2025-10-06_ionut__luiza_en",
     ]
+
+
+def test_reconcile_skips_corrupt_json(tmp_project, caplog):
+    import logging
+    caplog.set_level(logging.WARNING)
+    import config
+    from persons import corpus
+
+    # One valid polished + one corrupt file.
+    _mk_polished(config.POLISHED_DIR, "2025-08-07_vasquez__ionut_en",
+                 "en", 600.0, "vasquez", "ionut")
+    config.POLISHED_DIR.mkdir(parents=True, exist_ok=True)
+    (config.POLISHED_DIR / "2025-09-01_corrupt.json").write_text(
+        "this is not valid json {{{", encoding="utf-8"
+    )
+
+    added = corpus.reconcile_from_polished()
+
+    # Valid file is indexed; corrupt file is skipped.
+    assert added == 1
+    entries = corpus.load()
+    assert len(entries) == 1
+    assert entries[0]["file_id"] == "2025-08-07_vasquez__ionut_en"
+    # Warning emitted about the corrupt file.
+    assert any("reconcile: skipping" in rec.message and "corrupt" in rec.message
+               for rec in caplog.records)
+
+
+def test_reconcile_warns_on_missing_participants(tmp_project, caplog):
+    import json
+    import logging
+    caplog.set_level(logging.WARNING)
+    import config
+    from persons import corpus
+
+    # Polished JSON with NO participants field.
+    config.POLISHED_DIR.mkdir(parents=True, exist_ok=True)
+    (config.POLISHED_DIR / "2025-08-07_noparts_en.json").write_text(
+        json.dumps({
+            "file_id": "2025-08-07_noparts_en",
+            "date": "2025-08-07",
+            "language": "en",
+            "duration_s": 60.0,
+            "segments": [],
+            # no 'participants' field
+        }),
+        encoding="utf-8",
+    )
+
+    added = corpus.reconcile_from_polished()
+
+    assert added == 1  # still indexed, just with a warning
+    entries = corpus.load()
+    assert len(entries) == 1
+    assert "teacher_id" not in entries[0]
+    assert "student_id" not in entries[0]
+    # Warning must mention the missing participants.
+    assert any("no teacher_id/student_id" in rec.message or "participants" in rec.message
+               for rec in caplog.records)

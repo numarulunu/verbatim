@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
-from config import CORPUS_FILE
+from config import CORPUS_FILE, POLISHED_DIR
 from utils.atomic_write import atomic_write_json
 
 log = logging.getLogger(__name__)
@@ -92,30 +92,36 @@ def reconcile_from_polished() -> int:
     Guards against a crash between stage3.finalize's two writes (polished
     JSON then corpus update). On next startup, run.preflight calls this to
     replay orphan entries before any normal processing.
+
+    Single read + single write of corpus.json regardless of orphan count.
     """
-    import json as _json
-    import logging as _logging
-
-    _log = _logging.getLogger(__name__)
-
-    from config import POLISHED_DIR as _POLISHED_DIR
-
-    if not _POLISHED_DIR.exists():
+    if not POLISHED_DIR.exists():
         return 0
 
-    indexed = {e.get("file_id") for e in load() if e.get("file_id")}
-    added = 0
-    for polished in sorted(_POLISHED_DIR.glob("*.json")):
+    entries = load()
+    indexed = {e.get("file_id") for e in entries if e.get("file_id")}
+    to_add: list[dict] = []
+
+    for polished in sorted(POLISHED_DIR.glob("*.json")):
         file_id = polished.stem
         if file_id in indexed:
             continue
         try:
             with open(polished, "r", encoding="utf-8") as fh:
-                transcript = _json.load(fh)
-        except (OSError, _json.JSONDecodeError) as exc:
-            _log.warning("reconcile: skipping %s (%s)", polished.name, exc)
+                transcript = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            log.warning("reconcile: skipping %s (%s)", polished.name, exc)
             continue
-        append_session(session_entry_from(transcript))
-        added += 1
-        _log.info("reconcile: re-indexed orphan polished %s", file_id)
-    return added
+        entry = session_entry_from(transcript)
+        if not entry.get("teacher_id") and not entry.get("student_id"):
+            log.warning(
+                "reconcile: %s has no teacher_id/student_id — likely missing "
+                "'participants' field; indexing with partial metadata",
+                polished.name,
+            )
+        to_add.append(entry)
+        log.info("reconcile: re-indexed orphan polished %s", file_id)
+
+    if to_add:
+        _save(entries + to_add)
+    return len(to_add)
