@@ -22,12 +22,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 
 # NOTE: the daemon must configure stdout buffering BEFORE it emits anything.
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+
+# When running as a PyInstaller-frozen bundle, prepend the exe's directory
+# to PATH so bundled ffmpeg.exe / ffprobe.exe are found by subprocess calls
+# (audio-separator's demucs backend, utils.audio_qc.source_codec_info,
+# handlers._probe_duration). Harmless in dev mode — sys.frozen is only set
+# by PyInstaller's bootloader.
+if getattr(sys, "frozen", False):
+    _engine_dir = os.path.dirname(sys.executable)
+    os.environ["PATH"] = _engine_dir + os.pathsep + os.environ.get("PATH", "")
 
 from ipc_protocol import (
     CancelBatchCommand,

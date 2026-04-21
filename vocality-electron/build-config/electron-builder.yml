@@ -1,8 +1,10 @@
-# electron-builder config. Brief §9.
+# electron-builder config.
 #
-# Gate-3 scaffold: values are final-intent, but the build itself isn't run
-# until Gate 8. `npm run build` will work once `engine/vocality-engine.exe`
-# exists (Gate 5).
+# Produces a single self-contained Windows installer that lands in
+# C:\Program Files\Vocality\. The PyInstaller-frozen engine (bundled by
+# extraResources) ships the Python runtime, torch, CUDA DLLs, pyannote,
+# whisperx, audio-separator, and ffmpeg. Model weights (~5–8 GB) download
+# on first run into the user's HF cache — too large for the installer.
 
 appId: ro.vocality.asr
 productName: Vocality
@@ -12,21 +14,24 @@ directories:
 
 win:
   target: nsis
-  icon: resources/icon.ico  # icon must be dropped here before packaging (Gate 8)
+  # Icon file optional — if resources/icon.ico is absent, electron-
+  # builder falls back to the default Electron icon. Drop a 256x256 .ico
+  # in there whenever the branded one is ready.
 
 nsis:
   oneClick: false
-  perMachine: false                     # per-user install; no admin required
+  perMachine: true                      # installs to C:\Program Files\Vocality\ — admin prompt
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  shortcutName: Vocality
 
 extraResources:
   - from: engine/
     to: engine/
 
-# Auto-update via GitHub Releases (brief §9). Private repos require a
-# GH_TOKEN; public repos work anonymously.
+# Auto-update via GitHub Releases. Private repos require a GH_TOKEN in
+# the publish env; public repos update anonymously.
 publish:
   provider: github
   owner: numarulunu

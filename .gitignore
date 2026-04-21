@@ -26,6 +26,7 @@ session_map.json
 # --- Build / dist ---
 dist/
 build/
+# (build/ffmpeg/ is the cache for scripts/fetch-ffmpeg.js; never tracked)
 
 # --- Electron wrapper ---
 vocality-electron/node_modules/

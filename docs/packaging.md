@@ -1,47 +1,60 @@
 # Vocality — packaging guide
 
-Two pieces to ship:
+The build produces a single **`Vocality Setup X.Y.Z.exe`** (per-machine
+NSIS installer, lands in `C:\Program Files\Vocality\`) that bundles:
 
-1. **`vocality-engine.exe`** — PyInstaller-frozen Python daemon. Goes
-   inside the Electron installer as `resources/engine/`.
-2. **`Vocality Setup X.Y.Z.exe`** — electron-builder NSIS installer that
-   carries the engine bundle + the renderer + auto-updater.
+- The PyInstaller-frozen Python daemon (`vocality-engine.exe` +
+  `_internal/` with torch, CUDA DLLs, pyannote, whisperx, audio-
+  separator).
+- `ffmpeg.exe` + `ffprobe.exe` fetched from gyan.dev at build time.
+- The Electron renderer + electron-updater.
+
+What's **not** bundled (downloaded on first batch, ~5–8 GB):
+
+- faster-whisper large-v3-turbo weights (~1.5 GB)
+- pyannote/speaker-diarization-3.1 + embedding model (~500 MB)
+- audio-separator MelBand Roformer weights (~200 MB)
+- whisperx wav2vec2 alignment model per language (~1 GB each)
+
+End-user flow: install → launch → Settings modal (enter HF_TOKEN +
+optional ANTHROPIC_API_KEY) → Batch tab → Scan → Start. First batch
+downloads models; subsequent runs are fully offline.
 
 ---
 
-## Prerequisites
+## Prerequisites (build machine)
 
 - Python 3.11 venv at `.venv/` with every runtime dep from
-  `requirements.txt` installed and **confirmed working** on this machine
-  (i.e., `python run.py` on a real file succeeded).
+  `requirements.txt` installed and **confirmed working** (i.e.,
+  `python run.py` on a real file succeeded).
 - `pip install pyinstaller` inside the venv.
 - Node 20+ with `npm install` run in `vocality-electron/`.
+- Internet access during the first build (fetches FFmpeg).
 
-## Full build
-
-From the repo root:
+## Full build — one command
 
 ```bash
-# 1) Freeze the Python engine. Overwrites vocality-electron/engine/
-.venv/Scripts/python.exe -m PyInstaller --noconfirm \
-    --distpath vocality-electron build-engine.spec
-
-# 2) Build the Windows installer. Produces vocality-electron/dist/
 cd vocality-electron
-npm run build-win
+npm run build-all-win
 ```
 
-Outputs:
+That runs, in order:
 
-- `vocality-electron/engine/vocality-engine.exe`
-- `vocality-electron/engine/_internal/` (~3–5 GB: torch, CUDA DLLs,
-  pyannote, whisperx, audio-separator runtimes)
-- `vocality-electron/dist/Vocality Setup X.Y.Z.exe`
-- `vocality-electron/dist/latest.yml` (electron-updater manifest)
+1. `fetch-ffmpeg` — downloads gyan.dev's essentials build into
+   `build/ffmpeg/bin/` (cached; no-op on subsequent builds).
+2. `build-engine` — PyInstaller freezes `engine_daemon.py` into
+   `vocality-electron/engine/vocality-engine.exe` + `_internal/`.
+   ffmpeg.exe + ffprobe.exe are bundled alongside.
+3. `build-win` — electron-builder produces
+   `vocality-electron/dist/Vocality Setup X.Y.Z.exe` +
+   `latest.yml` for auto-update.
 
-Model weights are **NOT** bundled. They're fetched from Hugging Face on
-first run into `~\.cache\huggingface\` — the user must have `HF_TOKEN`
-configured (Settings modal) before running the first batch.
+Total build time: ~10–15 min on the first run (FFmpeg download +
+PyInstaller collect_all over torch/whisperx/pyannote). Subsequent
+builds with warm caches: ~3–5 min.
+
+Output installer size: expect **2–4 GB**. The torch + CUDA DLLs are
+the bulk; audio-separator's onnxruntime adds ~200 MB.
 
 ## Auto-update release flow
 
@@ -64,19 +77,53 @@ startup and downloads/installs updates in the background.
 - **UPX is disabled** in the spec — compressed torch/ctranslate2 DLLs
   fail Windows' DLL-load integrity checks at runtime.
 - **`engine/` is destroyed** on every PyInstaller run. Anything you
-  want to keep in that dir must live elsewhere. This doc used to sit
-  at `engine/README.md` and got blown away, hence its move here.
+  want to keep in that dir must live elsewhere (this doc moved out of
+  `engine/README.md` for that reason).
 - **`audio-separator[gpu]`** must match the venv's torch CUDA build.
   Mismatched versions ship broken CUDA kernels into the bundle.
+- **First-launch model download** — the first batch will appear to
+  hang for 2–5 min while huggingface_hub fetches weights. The Electron
+  UI won't show phase progress until downloads complete. Consider a
+  pre-flight warm-up after install (run a dry batch).
+- **No icon**: `build-config/electron-builder.yml` no longer requires
+  `resources/icon.ico`; electron-builder falls back to default. Drop a
+  256×256 `.ico` there whenever you want Vocality branding in the
+  taskbar / installer.
+
+## End-user install experience
+
+1. User runs `Vocality Setup X.Y.Z.exe`
+2. Windows UAC prompt (per-machine install writes to Program Files)
+3. Installer offers install location (default `C:\Program Files\Vocality\`)
+4. Desktop + Start Menu shortcuts created, app launches
+5. First launch: status bar shows `daemon: spawning → ready`
+6. User clicks gear → Settings → enters `HF_TOKEN` (required for
+   pyannote / whisper models) and optional `ANTHROPIC_API_KEY`
+7. Daemon restarts with env, user switches to Batch → Scan Material
+   → Start → watches phase progress (first batch also downloads ~5 GB
+   of models; progress bar will pause before phase 4 while HF
+   downloads)
+
+After first run, everything is local. No system-level FFmpeg required.
+
+## Uninstall
+
+Settings → Apps & features → Vocality → Uninstall. Removes
+`C:\Program Files\Vocality\` but **not** the user's data
+(`%LOCALAPPDATA%\Vocality\data\`) — that's deliberate so reinstalling
+preserves the voiceprint registry + polished transcripts.
 
 ## Ship-gate checklist
 
 Before cutting a release:
 
 - [ ] `python run.py` succeeds on a test fixture from `Material/test_smoke/`
-- [ ] `npm test` passes in `vocality-electron/` (currently 78 tests)
-- [ ] `python -m pytest tests/` passes on the Python side (69 non-GPU)
+- [ ] `node scripts/daemon-smoke.js` passes (10/10 steps)
+- [ ] `npm test` passes in `vocality-electron/`
+- [ ] `python -m pytest tests/test_reporter.py tests/test_handlers.py
+      tests/test_engine_lock.py tests/test_phase_events.py` passes
 - [ ] Bump `version` in `vocality-electron/package.json`
+- [ ] `npm run build-all-win` succeeds, installer launches on a clean VM
 - [ ] Tag the commit: `git tag -a v0.X.Y -m "..."; git push --tags`
-- [ ] Run the publish command above
-- [ ] Smoke-test the installed MSI on a clean VM
+- [ ] `GH_TOKEN=ghp_xxx npm run publish-win`
+- [ ] Verify `latest.yml` + installer landed on the GitHub release

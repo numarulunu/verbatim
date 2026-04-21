@@ -32,6 +32,7 @@ Known gotchas, all handled below:
   installer preserves that structure.
 - audio-separator downloads models on first run — none bundled here.
 """
+import os
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
@@ -101,6 +102,24 @@ for pkg in _METADATA:
         datas += copy_metadata(pkg)
     except Exception as exc:  # noqa: BLE001
         print(f"[build-engine] WARN: copy_metadata({pkg!r}) failed: {exc}")
+
+
+# Bundle ffmpeg + ffprobe next to vocality-engine.exe so audio-separator
+# and utils.audio_qc don't need a system-installed ffmpeg. Populated by
+# `node scripts/fetch-ffmpeg.js`.
+_FFMPEG_DIR = os.path.join('build', 'ffmpeg', 'bin')
+for _name in ('ffmpeg.exe', 'ffprobe.exe'):
+    _p = os.path.join(_FFMPEG_DIR, _name)
+    if os.path.exists(_p):
+        # '.' = dest relative to the COLLECT root (sits beside vocality-engine.exe).
+        binaries.append((_p, '.'))
+        print(f"[build-engine] bundled {_p}")
+    else:
+        print(
+            f"[build-engine] WARN: {_p} not found — install will require "
+            f"{_name} on the system PATH. Run `node scripts/fetch-ffmpeg.js` "
+            f"before the spec if you want it bundled."
+        )
 
 
 a = Analysis(
