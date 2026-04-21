@@ -1,0 +1,734 @@
+{
+  "protocol_version": "1.0",
+  "phase_names": [
+    "isolation",
+    "vad",
+    "decode",
+    "asr",
+    "alignment",
+    "diarization",
+    "identification",
+    "verification",
+    "polish",
+    "corpus_update"
+  ],
+  "total_phases": 10,
+  "error_types": [
+    "audio_corrupt",
+    "hf_token_missing",
+    "gpu_oom",
+    "claude_api_rate_limited",
+    "claude_cli_not_found",
+    "disk_full",
+    "voiceprint_collision",
+    "diarization_3rd_speaker",
+    "polish_schema_drift",
+    "daemon_crash",
+    "engine_lock_held",
+    "unknown_command",
+    "invalid_command_payload",
+    "ffmpeg_missing"
+  ],
+  "warning_types": [
+    "low_confidence_bootstrap",
+    "drift_detected",
+    "overlap_high",
+    "language_mismatch"
+  ],
+  "commands": {
+    "ping": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cmd": {
+        "type": "str",
+        "default": "ping"
+      }
+    },
+    "shutdown": {
+      "cmd": {
+        "type": "str",
+        "default": "shutdown"
+      }
+    },
+    "detect": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cmd": {
+        "type": "str",
+        "default": "detect"
+      }
+    },
+    "list_persons": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cmd": {
+        "type": "str",
+        "default": "list_persons"
+      }
+    },
+    "register_person": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "person": {
+        "type": "dict[str, Any]"
+      },
+      "cmd": {
+        "type": "str",
+        "default": "register_person"
+      }
+    },
+    "inspect_person": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "person_id": {
+        "type": "str",
+        "default": ""
+      },
+      "cmd": {
+        "type": "str",
+        "default": "inspect_person"
+      }
+    },
+    "edit_person": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "person_id": {
+        "type": "str",
+        "default": ""
+      },
+      "updates": {
+        "type": "dict[str, Any]"
+      },
+      "cmd": {
+        "type": "str",
+        "default": "edit_person"
+      }
+    },
+    "rename_person": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "old_id": {
+        "type": "str",
+        "default": ""
+      },
+      "new_id": {
+        "type": "str",
+        "default": ""
+      },
+      "cmd": {
+        "type": "str",
+        "default": "rename_person"
+      }
+    },
+    "merge_persons": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "source_id": {
+        "type": "str",
+        "default": ""
+      },
+      "target_id": {
+        "type": "str",
+        "default": ""
+      },
+      "cmd": {
+        "type": "str",
+        "default": "merge_persons"
+      }
+    },
+    "scan_files": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "input_dir": {
+        "type": "str",
+        "default": ""
+      },
+      "probe_duration": {
+        "type": "bool",
+        "default": true
+      },
+      "cmd": {
+        "type": "str",
+        "default": "scan_files"
+      }
+    },
+    "process_batch": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "files": {
+        "type": "list[str]"
+      },
+      "options": {
+        "type": "dict[str, Any]"
+      },
+      "cmd": {
+        "type": "str",
+        "default": "process_batch"
+      }
+    },
+    "redo_batch": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "filter": {
+        "type": "dict[str, Any]"
+      },
+      "cmd": {
+        "type": "str",
+        "default": "redo_batch"
+      }
+    },
+    "cancel_batch": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cmd": {
+        "type": "str",
+        "default": "cancel_batch"
+      }
+    },
+    "get_corpus_summary": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cmd": {
+        "type": "str",
+        "default": "get_corpus_summary"
+      }
+    }
+  },
+  "events": {
+    "ready": {
+      "engine_version": {
+        "type": "str",
+        "default": ""
+      },
+      "models_loaded": {
+        "type": "list[str]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "ready"
+      }
+    },
+    "pong": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "pong"
+      }
+    },
+    "shutting_down": {
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "shutting_down"
+      }
+    },
+    "cancel_accepted": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "cancel_accepted"
+      }
+    },
+    "system_info": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "cpu": {
+        "type": "dict[str, Any]"
+      },
+      "gpu": {
+        "type": "dict[str, Any]"
+      },
+      "cuda": {
+        "type": "bool",
+        "default": false
+      },
+      "hf_token": {
+        "type": "bool",
+        "default": false
+      },
+      "anthropic_api_key": {
+        "type": "bool",
+        "default": false
+      },
+      "disk_free_gb": {
+        "type": "float",
+        "default": 0.0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "system_info"
+      }
+    },
+    "persons_listed": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "persons": {
+        "type": "list[dict[str, Any]]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "persons_listed"
+      }
+    },
+    "person_registered": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "person_id": {
+        "type": "str",
+        "default": ""
+      },
+      "record": {
+        "type": "dict[str, Any]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "person_registered"
+      }
+    },
+    "person_inspected": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "person": {
+        "type": "dict[str, Any]"
+      },
+      "voiceprint_files": {
+        "type": "list[str]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "person_inspected"
+      }
+    },
+    "person_renamed": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "old_id": {
+        "type": "str",
+        "default": ""
+      },
+      "new_id": {
+        "type": "str",
+        "default": ""
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "person_renamed"
+      }
+    },
+    "person_merged": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "source_id": {
+        "type": "str",
+        "default": ""
+      },
+      "target_id": {
+        "type": "str",
+        "default": ""
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "person_merged"
+      }
+    },
+    "collision_detected": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "pair": {
+        "type": "list[str]"
+      },
+      "cosine": {
+        "type": "float",
+        "default": 0.0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "collision_detected"
+      }
+    },
+    "files_scanned": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "files": {
+        "type": "list[dict[str, Any]]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "files_scanned"
+      }
+    },
+    "batch_started": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file_count": {
+        "type": "int",
+        "default": 0
+      },
+      "options": {
+        "type": "dict[str, Any]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "batch_started"
+      }
+    },
+    "file_started": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file": {
+        "type": "str",
+        "default": ""
+      },
+      "index": {
+        "type": "int",
+        "default": 0
+      },
+      "total": {
+        "type": "int",
+        "default": 0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "file_started"
+      }
+    },
+    "phase_started": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file_index": {
+        "type": "int",
+        "default": 0
+      },
+      "phase": {
+        "type": "str",
+        "default": ""
+      },
+      "phase_index": {
+        "type": "int",
+        "default": 0
+      },
+      "total_phases": {
+        "type": "int",
+        "default": 10
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "phase_started"
+      }
+    },
+    "phase_progress": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file_index": {
+        "type": "int",
+        "default": 0
+      },
+      "phase": {
+        "type": "str",
+        "default": ""
+      },
+      "phase_progress": {
+        "type": "float",
+        "default": 0.0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "phase_progress"
+      }
+    },
+    "phase_complete": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file_index": {
+        "type": "int",
+        "default": 0
+      },
+      "phase": {
+        "type": "str",
+        "default": ""
+      },
+      "elapsed_s": {
+        "type": "float",
+        "default": 0.0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "phase_complete"
+      }
+    },
+    "file_complete": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "file_index": {
+        "type": "int",
+        "default": 0
+      },
+      "output_path": {
+        "type": "str",
+        "default": ""
+      },
+      "stats": {
+        "type": "dict[str, Any]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "file_complete"
+      }
+    },
+    "batch_complete": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "total_files": {
+        "type": "int",
+        "default": 0
+      },
+      "successful": {
+        "type": "int",
+        "default": 0
+      },
+      "failed": {
+        "type": "int",
+        "default": 0
+      },
+      "total_elapsed_s": {
+        "type": "float",
+        "default": 0.0
+      },
+      "failures": {
+        "type": "list[dict[str, Any]]"
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "batch_complete"
+      }
+    },
+    "corpus_summary": {
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "session_count": {
+        "type": "int",
+        "default": 0
+      },
+      "persons": {
+        "type": "dict[str, Any]"
+      },
+      "total_hours": {
+        "type": "float",
+        "default": 0.0
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "corpus_summary"
+      }
+    },
+    "error": {
+      "error_type": {
+        "type": "str",
+        "default": ""
+      },
+      "message": {
+        "type": "str",
+        "default": ""
+      },
+      "recoverable": {
+        "type": "bool",
+        "default": false
+      },
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "context": {
+        "type": "dict[str, Any]"
+      },
+      "file": {
+        "type": "str | None",
+        "default": null
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "error"
+      }
+    },
+    "warning": {
+      "warning_type": {
+        "type": "str",
+        "default": ""
+      },
+      "message": {
+        "type": "str",
+        "default": ""
+      },
+      "context": {
+        "type": "dict[str, Any]"
+      },
+      "id": {
+        "type": "str | None",
+        "default": null
+      },
+      "timestamp": {
+        "type": "str | None",
+        "default": null
+      },
+      "type": {
+        "type": "str",
+        "default": "warning"
+      }
+    }
+  }
+}
