@@ -140,6 +140,20 @@ test('reduceEvent(person_inspected): stashes in activeInspect', () => {
   assert.deepEqual(s.registry.activeInspect.voiceprint_files, ['universal.npy']);
 });
 
+test('reduceEvent(person_inspected): mirrors fields into the persons list row', () => {
+  let s = reduceEvent(initialState(), {
+    type: 'persons_listed',
+    persons: [{ id: 'vasquez', display_name: 'Vasquez', voice_type: null }],
+  });
+  s = reduceEvent(s, {
+    type: 'person_inspected',
+    person: { id: 'vasquez', display_name: 'Vasquez', voice_type: 'tenor' },
+    voiceprint_files: [],
+  });
+  assert.equal(s.registry.persons[0].voice_type, 'tenor',
+    'list row must reflect the inspected record so edits show up without re-list');
+});
+
 test('reduceEvent(person_renamed): rewrites id in registry.persons', () => {
   let s = reduceEvent(initialState(), {
     type: 'persons_listed',

@@ -145,11 +145,18 @@ function reduceEvent(state, event) {
       };
     }
 
-    case 'person_inspected':
+    case 'person_inspected': {
+      // Mirror the inspected record into registry.persons so list rows
+      // reflect post-edit field changes (display_name, role, voice_type…).
+      const inspected = event.person || {};
+      const persons = inspected.id
+        ? state.registry.persons.map((p) => (p.id === inspected.id ? { ...p, ...inspected } : p))
+        : state.registry.persons;
       return {
         ...state,
-        registry: { ...state.registry, activeInspect: { ...event } },
+        registry: { ...state.registry, persons, activeInspect: { ...event } },
       };
+    }
 
     case 'person_renamed': {
       const persons = state.registry.persons.map((p) =>

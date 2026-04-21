@@ -55,12 +55,41 @@
   const batchFilesEl = batchView.querySelector('.batch-files');
   const fileRowTmpl = document.getElementById('file-row-template');
 
+  // Registry view
+  const registryView = document.querySelector('.view[data-view="registry"]');
+  const refreshPersonsBtn = registryView.querySelector('[data-action="refresh-persons"]');
+  const registrySummary = registryView.querySelector('.registry-summary');
+  const personsRowsEl = registryView.querySelector('.persons-rows');
+  const collisionsPanel = registryView.querySelector('.collisions-panel');
+  const collisionsList = registryView.querySelector('.collisions-list');
+  const inspectEmpty = registryView.querySelector('.inspect-empty');
+  const inspectDetail = registryView.querySelector('.inspect-detail');
+  const inspectIdEl = registryView.querySelector('.inspect-id');
+  const inspectDisplayEl = registryView.querySelector('.inspect-display');
+  const inspectFields = registryView.querySelector('.inspect-fields');
+  const vpList = registryView.querySelector('.vp-list');
+  const editBtn = registryView.querySelector('[data-action="edit-person"]');
+  const renameBtn = registryView.querySelector('[data-action="rename-person"]');
+  const mergeBtn = registryView.querySelector('[data-action="merge-person"]');
+
+  // Modal
+  const modalEl = document.querySelector('.modal');
+  const modalTitle = modalEl.querySelector('.modal-title');
+  const modalBody = modalEl.querySelector('.modal-body');
+  const modalCloseBtn = modalEl.querySelector('.modal-close');
+  const modalCancelBtn = modalEl.querySelector('[data-action="modal-cancel"]');
+  const modalSubmitBtn = modalEl.querySelector('[data-action="modal-submit"]');
+
+  let modalOnSubmit = null;
+  let activePersonId = null;
+
   // ── Rendering ──────────────────────────────────────────────────────
 
   function render() {
     renderTabs();
     renderStatusBar();
     renderBatchView();
+    renderRegistryView();
   }
 
   function renderTabs() {
@@ -151,6 +180,145 @@
     }
   }
 
+  function renderRegistryView() {
+    const persons = state.registry.persons;
+    registrySummary.textContent = persons.length === 0
+      ? ''
+      : `${persons.length} person${persons.length === 1 ? '' : 's'}`;
+
+    // Row list — plain DOM rewrite (small N).
+    personsRowsEl.innerHTML = '';
+    for (const p of persons) {
+      const row = document.createElement('div');
+      row.className = 'person-row';
+      row.dataset.personId = p.id;
+      if (p.id === activePersonId) row.classList.add('active');
+      const cells = [
+        p.id,
+        p.display_name || '—',
+        p.default_role || '—',
+        `${p.n_sessions_as_teacher || 0}/${p.n_sessions_as_student || 0}`,
+      ];
+      for (let i = 0; i < cells.length; i++) {
+        const span = document.createElement('span');
+        if (i === 3) span.className = 'sessions-col';
+        span.textContent = cells[i];
+        row.appendChild(span);
+      }
+      row.addEventListener('click', () => selectPerson(p.id));
+      personsRowsEl.appendChild(row);
+    }
+
+    // Collisions
+    const collisions = state.registry.collisions;
+    collisionsPanel.hidden = collisions.length === 0;
+    collisionsList.innerHTML = '';
+    for (const c of collisions) {
+      const line = document.createElement('div');
+      line.textContent = `${(c.pair || []).join(' ↔ ')} — cosine ${(c.cosine || 0).toFixed(3)}`;
+      collisionsList.appendChild(line);
+    }
+
+    // Detail pane
+    const inspected = state.registry.activeInspect;
+    const showDetail = inspected && inspected.person && inspected.person.id === activePersonId;
+    inspectEmpty.hidden = showDetail;
+    inspectDetail.hidden = !showDetail;
+    if (showDetail) {
+      const person = inspected.person;
+      inspectIdEl.textContent = person.id || '';
+      inspectDisplayEl.textContent = person.display_name || '';
+
+      inspectFields.innerHTML = '';
+      const rows = [
+        ['Role', person.default_role || '—'],
+        ['Voice', person.voice_type || '—'],
+        ['Fach', person.fach || '—'],
+        ['First seen', person.first_seen || '—'],
+        ['Last updated', person.last_updated || '—'],
+        ['Sessions (T/S)', `${person.n_sessions_as_teacher || 0} / ${person.n_sessions_as_student || 0}`],
+        ['Total hours', (person.total_hours || 0).toFixed(2)],
+        ['Regions', (person.observed_regions || []).join(', ') || '—'],
+        ['Bootstrap left', String(person.bootstrap_sessions_remaining ?? 0)],
+      ];
+      for (const [label, value] of rows) {
+        const dt = document.createElement('dt'); dt.textContent = label;
+        const dd = document.createElement('dd'); dd.textContent = value;
+        inspectFields.appendChild(dt);
+        inspectFields.appendChild(dd);
+      }
+
+      vpList.innerHTML = '';
+      for (const f of inspected.voiceprint_files || []) {
+        const li = document.createElement('li'); li.textContent = f;
+        vpList.appendChild(li);
+      }
+    }
+  }
+
+  function selectPerson(id) {
+    activePersonId = id;
+    window.vocality.send({ cmd: 'inspect_person', id: nextId('insp'), person_id: id });
+    render();
+  }
+
+  // ── Modal helper ─────────────────────────────────────────────────────
+
+  function openModal({ title, fields, onSubmit }) {
+    modalTitle.textContent = title;
+    modalBody.innerHTML = '';
+    for (const f of fields) {
+      const label = document.createElement('label');
+      const span = document.createElement('span'); span.textContent = f.label;
+      label.appendChild(span);
+      let input;
+      if (f.type === 'select') {
+        input = document.createElement('select');
+        for (const opt of f.options) {
+          const o = document.createElement('option');
+          o.value = opt.value;
+          o.textContent = opt.label;
+          if (opt.value === (f.value ?? '')) o.selected = true;
+          input.appendChild(o);
+        }
+      } else {
+        input = document.createElement('input');
+        input.type = f.type || 'text';
+        input.value = f.value ?? '';
+      }
+      input.name = f.name;
+      label.appendChild(input);
+      modalBody.appendChild(label);
+    }
+    modalOnSubmit = onSubmit;
+    modalEl.hidden = false;
+  }
+
+  function closeModal() {
+    modalEl.hidden = true;
+    modalOnSubmit = null;
+    modalBody.innerHTML = '';
+  }
+
+  function readModalValues() {
+    const values = {};
+    for (const input of modalBody.querySelectorAll('input, select')) {
+      values[input.name] = input.value;
+    }
+    return values;
+  }
+
+  modalCloseBtn.addEventListener('click', closeModal);
+  modalCancelBtn.addEventListener('click', closeModal);
+  modalSubmitBtn.addEventListener('click', () => {
+    if (modalOnSubmit) {
+      const values = readModalValues();
+      modalOnSubmit(values);
+    }
+    closeModal();
+  });
+  modalEl.querySelector('.modal-backdrop').addEventListener('click', closeModal);
+
   function basename(p) {
     if (!p) return '';
     const parts = String(p).split(/[\\/]/);
@@ -160,8 +328,106 @@
   // ── Event sources ──────────────────────────────────────────────────
 
   for (const tab of tabs) {
-    tab.addEventListener('click', () => dispatch((s) => setView(s, tab.dataset.view)));
+    tab.addEventListener('click', () => {
+      const next = tab.dataset.view;
+      dispatch((s) => setView(s, next));
+      // When entering Registry, refresh the person list from the daemon.
+      if (next === 'registry' && state.daemon.status === 'ready') {
+        window.vocality.send({ cmd: 'list_persons', id: nextId('lp') });
+      }
+    });
   }
+
+  refreshPersonsBtn.addEventListener('click', () => {
+    window.vocality.send({ cmd: 'list_persons', id: nextId('lp') });
+  });
+
+  editBtn.addEventListener('click', () => {
+    const person = (state.registry.activeInspect || {}).person;
+    if (!person) return;
+    openModal({
+      title: `Edit ${person.id}`,
+      fields: [
+        { name: 'display_name', label: 'Display name', value: person.display_name || '' },
+        { name: 'disambiguator', label: 'Disambiguator (optional)', value: person.disambiguator || '' },
+        {
+          name: 'default_role', label: 'Default role', type: 'select',
+          value: person.default_role || 'student',
+          options: [
+            { value: 'student', label: 'student' },
+            { value: 'teacher', label: 'teacher' },
+          ],
+        },
+        {
+          name: 'voice_type', label: 'Voice type', type: 'select',
+          value: person.voice_type || '',
+          options: [
+            { value: '', label: '— (unset)' },
+            ...['bass','baritone','tenor','alto','mezzo','soprano'].map((v) => ({ value: v, label: v })),
+          ],
+        },
+        {
+          name: 'fach', label: 'Fach', type: 'select',
+          value: person.fach || '',
+          options: [
+            { value: '', label: '— (unset)' },
+            ...['lirico','drammatico','leggero','spinto','buffo'].map((v) => ({ value: v, label: v })),
+          ],
+        },
+      ],
+      onSubmit: (values) => {
+        const updates = {};
+        for (const k of ['display_name', 'disambiguator', 'default_role', 'voice_type', 'fach']) {
+          if (values[k] !== undefined && values[k] !== '') updates[k] = values[k];
+        }
+        window.vocality.send({
+          cmd: 'edit_person', id: nextId('edit'),
+          person_id: person.id, updates,
+        });
+      },
+    });
+  });
+
+  renameBtn.addEventListener('click', () => {
+    const person = (state.registry.activeInspect || {}).person;
+    if (!person) return;
+    openModal({
+      title: `Rename ${person.id}`,
+      fields: [{ name: 'new_id', label: 'New id (lowercase, [a-z0-9_])', value: person.id }],
+      onSubmit: (values) => {
+        const newId = (values.new_id || '').trim();
+        if (!newId || newId === person.id) return;
+        window.vocality.send({
+          cmd: 'rename_person', id: nextId('rn'),
+          old_id: person.id, new_id: newId,
+        });
+        activePersonId = newId;
+      },
+    });
+  });
+
+  mergeBtn.addEventListener('click', () => {
+    const person = (state.registry.activeInspect || {}).person;
+    if (!person) return;
+    const others = state.registry.persons.filter((p) => p.id !== person.id);
+    if (others.length === 0) return;
+    openModal({
+      title: `Merge ${person.id} into…`,
+      fields: [{
+        name: 'target_id', label: 'Target id (the kept record)', type: 'select',
+        value: others[0].id,
+        options: others.map((p) => ({ value: p.id, label: `${p.id} (${p.display_name || ''})` })),
+      }],
+      onSubmit: (values) => {
+        if (!values.target_id) return;
+        window.vocality.send({
+          cmd: 'merge_persons', id: nextId('mg'),
+          source_id: person.id, target_id: values.target_id,
+        });
+        activePersonId = values.target_id;
+      },
+    });
+  });
 
   scanBtn.addEventListener('click', () => {
     const path = (scanPathInput.value || '').trim() || 'Material';

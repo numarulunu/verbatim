@@ -44,7 +44,47 @@
         </template>
       </section>
       <section class="view" data-view="registry" hidden>
-        <div class="view-placeholder">Registry view — persons, voiceprints, rename, merge.</div>
+        <div class="registry-layout">
+          <div class="registry-left">
+            <div class="registry-toolbar">
+              <button type="button" class="btn btn-secondary" data-action="refresh-persons">Refresh</button>
+              <span class="registry-summary"></span>
+            </div>
+            <div class="persons-table" role="listbox">
+              <div class="persons-header">
+                <span>ID</span>
+                <span>Display</span>
+                <span>Role</span>
+                <span class="sessions-col" title="teacher/student sessions">T/S</span>
+              </div>
+              <div class="persons-rows"></div>
+            </div>
+            <div class="collisions-panel" hidden>
+              <div class="collisions-header">Collisions</div>
+              <div class="collisions-list"></div>
+            </div>
+          </div>
+
+          <div class="registry-right">
+            <div class="inspect-empty">Select a person to inspect.</div>
+            <div class="inspect-detail" hidden>
+              <div class="inspect-header">
+                <span class="inspect-id"></span>
+                <span class="inspect-display"></span>
+              </div>
+              <dl class="inspect-fields"></dl>
+              <div class="inspect-voiceprints">
+                <div class="vp-header">Voiceprints</div>
+                <ul class="vp-list"></ul>
+              </div>
+              <div class="inspect-actions">
+                <button type="button" class="btn btn-secondary" data-action="edit-person">Edit</button>
+                <button type="button" class="btn btn-secondary" data-action="rename-person">Rename</button>
+                <button type="button" class="btn btn-danger" data-action="merge-person">Merge into…</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
       <section class="view" data-view="redo" hidden>
         <div class="view-placeholder">Redo view — stale-transcript filter, replay subset.</div>
@@ -58,6 +98,22 @@
       <span class="status-version"></span>
       <span class="status-last-error"></span>
     </footer>
+  </div>
+
+  <!-- Simple modal used by registry actions + future settings. -->
+  <div class="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <span class="modal-title"></span>
+        <button type="button" class="modal-close" aria-label="Close">×</button>
+      </div>
+      <form class="modal-body"></form>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-action="modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="modal-submit">Save</button>
+      </div>
+    </div>
   </div>
 
   <script src="app-state.js"></script>
