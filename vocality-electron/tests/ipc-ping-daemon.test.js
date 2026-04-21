@@ -146,14 +146,17 @@ test('second daemon while first is alive: fails fast with engine_lock_held', { s
   }
 });
 
-test('detect: emits system_info with cpu + cuda flag + disk', { skip: !pythonAvailable }, async () => {
+test('detect: emits system_info with cpu + cuda flag + disk', { skip: !pythonAvailable, timeout: 90_000 }, async () => {
   const d = startDaemon();
   try {
     const ready = await d.nextEvent();
     assert.equal(ready.type, 'ready');
 
     d.send({ cmd: 'detect', id: 'det-1' });
-    const info = await d.nextEvent();
+    // First detect on a fresh daemon triggers a cold `import torch` — ~20-30s
+    // on Windows machines with aggressive AV. This is first-detect latency,
+    // not a test flake; the generous timeout reflects packaged-app reality.
+    const info = await d.nextEvent(90_000);
     assert.equal(info.type, 'system_info');
     assert.equal(info.id, 'det-1');
     assert.equal(typeof info.cuda, 'boolean');
