@@ -159,7 +159,8 @@ VERIFICATION_REASSIGN_MARGIN    = 0.15  # cosine margin required to flip label
 # Vocal region classifier (pitch-based)
 # ---------------------------------------------------------------------------
 
-PITCH_EXTRACTOR     = "pyworld"  # alt: "librosa"
+PITCH_EXTRACTOR          = "pyworld"  # alt: "librosa"
+PYWORLD_FRAME_PERIOD_MS  = 10.0       # frame_period arg to pyworld.dio; consumed by regionizer
 REGION_LABELS       = ("speaking", "sung_low", "sung_mid", "sung_high", "sung_full")
 SUSTAIN_MIN_SECONDS = 1.5        # sung_full = pitch held stable >this
 

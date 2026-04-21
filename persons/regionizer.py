@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from config import PITCH_EXTRACTOR, SUSTAIN_MIN_SECONDS
+from config import PITCH_EXTRACTOR, PYWORLD_FRAME_PERIOD_MS, SUSTAIN_MIN_SECONDS
 from persons.schema import PersonRecord
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ def extract_pitch(audio: "np.ndarray", sr: int) -> "np.ndarray":
         try:
             import pyworld
             audio_f64 = audio.astype(np.float64, copy=False)
-            f0, t = pyworld.dio(audio_f64, sr, frame_period=10.0)  # coarse
+            f0, t = pyworld.dio(audio_f64, sr, frame_period=PYWORLD_FRAME_PERIOD_MS)  # coarse
             f0 = pyworld.stonemask(audio_f64, f0, t, sr)            # refine
             return f0.astype(np.float32)
         except ImportError:
@@ -149,9 +149,14 @@ def classify_segment(
     # pyworld uses a fixed 10ms period (regionizer.extract_pitch sets
     # frame_period=10.0); librosa.pyin uses hop_length/sr.
     if PITCH_EXTRACTOR == "pyworld":
-        frame_s = 0.010
-    else:
+        frame_s = PYWORLD_FRAME_PERIOD_MS / 1000.0
+    elif PITCH_EXTRACTOR == "librosa":
         frame_s = 512.0 / sr
+    else:
+        raise ValueError(
+            f"Unknown PITCH_EXTRACTOR {PITCH_EXTRACTOR!r}; "
+            "classify_segment's sustained-pitch math has no frame_s for this extractor"
+        )
     if _has_sustained_pitch(f0, frame_s, SUSTAIN_MIN_SECONDS):
         return "sung_full"
 

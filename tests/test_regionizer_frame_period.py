@@ -4,7 +4,6 @@ vs librosa ~32ms at sr=16000). Otherwise the SUSTAIN_MIN_SECONDS check
 fires at the wrong frame count.
 """
 import numpy as np
-import pytest
 
 
 def test_frame_s_is_10ms_for_pyworld(monkeypatch):
