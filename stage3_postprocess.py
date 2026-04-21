@@ -321,11 +321,15 @@ def _update_one_person(
             continue
         new_centroid = embed(concat)
         existing_path = pdir / f"{region}.npy"
-        if is_redo and existing_path.exists():
+        if is_redo:
+            if not existing_path.exists():
+                # No prior save for this region — nothing to reconstruct on
+                # redo. Skip so the universal rollup doesn't end up derived
+                # from a region centroid that has no corresponding .npy /
+                # region_session_counts entry.
+                continue
             # Redo: this session's audio is ALREADY folded into the existing
-            # centroid. Re-blending would double-weight it. Keep the prior
-            # value and only re-derive `active_centroids` for the universal
-            # rollup below.
+            # centroid. Re-blending would double-weight it.
             blended = np.load(existing_path)
         elif existing_path.exists():
             prior = np.load(existing_path)

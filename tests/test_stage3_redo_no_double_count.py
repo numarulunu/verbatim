@@ -26,11 +26,26 @@ def tmp_voiceprint_root(monkeypatch, tmp_path):
     yield tmp_path
 
 
+_embed_calls = 0
+
+
 def _fake_embed(audio):
-    # Deterministic fake: returns a normalized vector seeded from len(audio).
-    rng = np.random.RandomState(len(audio) % 10_000)
+    """Call-count-sensitive fake: each invocation returns a different vector.
+
+    Seeding by audio content can collide (e.g., len % 10000 == 0 for same-size
+    clips), making a re-blend produce the same result as no-blend and hiding
+    regressions in the is_redo guard.
+    """
+    global _embed_calls
+    _embed_calls += 1
+    rng = np.random.RandomState(_embed_calls)
     vec = rng.randn(512).astype(np.float32)
     return vec / (np.linalg.norm(vec) + 1e-9)
+
+
+def _reset_embed_counter():
+    global _embed_calls
+    _embed_calls = 0
 
 
 def test_redo_does_not_double_count(tmp_voiceprint_root, monkeypatch):
@@ -41,6 +56,7 @@ def test_redo_does_not_double_count(tmp_voiceprint_root, monkeypatch):
     from persons import registry, schema
     from stage3_postprocess import update_voice_libraries
 
+    _reset_embed_counter()
     monkeypatch.setattr("persons.embedder.embed", _fake_embed)
     monkeypatch.setattr("persons.matcher.check_collisions", lambda: [])
 
@@ -95,6 +111,7 @@ def test_redo_flag_defaults_to_false(tmp_voiceprint_root, monkeypatch):
     from persons import registry
     from stage3_postprocess import update_voice_libraries
 
+    _reset_embed_counter()
     monkeypatch.setattr("persons.embedder.embed", _fake_embed)
     monkeypatch.setattr("persons.matcher.check_collisions", lambda: [])
 
@@ -118,3 +135,48 @@ def test_redo_flag_defaults_to_false(tmp_voiceprint_root, monkeypatch):
     # Call without is_redo — must behave as is_redo=False.
     update_voice_libraries(segments, label_to_person, audio, 16000, meta)
     assert registry.load("vasquez").n_sessions_as_teacher == 1
+
+
+def test_redo_skips_region_when_no_prior_file_exists(tmp_voiceprint_root, monkeypatch):
+    """If a region's .npy was never saved (e.g., first pass crashed), a redo
+    with is_redo=True must SKIP that region entirely — not write a universal
+    centroid derived from a region with no corresponding .npy or
+    region_session_counts entry."""
+    import config  # noqa: F401
+    from filename_parser import SessionMeta
+    from persons import registry
+    from stage3_postprocess import update_voice_libraries
+
+    _reset_embed_counter()
+    monkeypatch.setattr("persons.embedder.embed", _fake_embed)
+    monkeypatch.setattr("persons.matcher.check_collisions", lambda: [])
+
+    meta = SessionMeta(
+        date="2025-08-07", language="en",
+        teacher_id="vasquez", student_id="ionut",
+        source_path=Path("test.mp4"),
+    )
+    # Register vasquez but don't save any region centroids.
+    person = registry.register_new(
+        id_="vasquez", display_name="vasquez",
+        default_role="teacher", first_seen=meta.date,
+    )
+    # Don't pre-save speaking.npy.
+
+    audio = np.ones(16000 * 30, dtype=np.float32)
+    segments = [{
+        "start": 0.0, "end": 20.0,
+        "speaker_id": "vasquez", "speaker_confidence": 1.0,
+        "matched_region": "speaking",
+    }]
+    label_to_person = {"SPEAKER_00": person}
+
+    update_voice_libraries(segments, label_to_person, audio, 16000, meta, is_redo=True)
+
+    pdir = tmp_voiceprint_root / "_voiceprints" / "people" / "vasquez"
+    assert not (pdir / "speaking.npy").exists(), (
+        "redo must NOT create speaking.npy when it didn't already exist"
+    )
+    assert not (pdir / "universal.npy").exists(), (
+        "redo must NOT create universal.npy derived from a ghost region"
+    )
