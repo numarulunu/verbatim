@@ -6,8 +6,14 @@
 # whisperx, audio-separator, and ffmpeg. Model weights (~5–8 GB) download
 # on first run into the user's HF cache — too large for the installer.
 
-appId: ro.verbatim.asr
-productName: Verbatim
+appId: ro.verbatim.app
+# productName is used by NSIS for the install-folder name AND the exe
+# name. Plain "Verbatim" conflicts with a Verbatim-brand gaming headphones
+# driver (Aac_Verbatim_SureFireGaming_Product) that lives at
+# C:\Program Files\Verbatim\ on some machines. We install to a unique
+# folder and override shortcutName + window title so the user-visible
+# branding remains plain "Verbatim".
+productName: Verbatim Transcribe
 
 directories:
   output: dist
@@ -20,19 +26,30 @@ win:
 
 nsis:
   oneClick: false
-  perMachine: true                      # installs to C:\Program Files\Verbatim\ — admin prompt
+  perMachine: true                      # installs to C:\Program Files\Verbatim Transcribe\ — admin prompt
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Verbatim
+  shortcutName: Verbatim                 # Desktop + Start Menu shortcut label
+  uninstallDisplayName: Verbatim         # Add/Remove Programs label
+  runAfterFinish: false                  # don't auto-launch; some AV setups
+                                          # break the launch with "can't find path"
+                                          # which manifests as a broken shortcut
+  deleteAppDataOnUninstall: false        # preserve user data across reinstalls
 
+# The PyInstaller-frozen engine is copied into the installer under
+# resources/engine/ — this preserves the runtime-helpers path resolution.
 extraResources:
   - from: engine/
     to: engine/
 
-# Auto-update via GitHub Releases. Private repos require a GH_TOKEN in
-# the publish env; public repos update anonymously.
+# Auto-update via GitHub Releases. The installed app checks latest.yml
+# on each startup; if a newer version is published, electron-updater
+# downloads in the background and installs on next app quit.
+# Requires: a public GitHub repo at numarulunu/verbatim. Each release
+# must carry the Verbatim Setup X.Y.Z.exe + latest.yml assets.
+# Private repos need GH_TOKEN in the publish env.
 publish:
   provider: github
   owner: numarulunu
-  repo: verbatim-asr
+  repo: verbatim
