@@ -437,3 +437,69 @@ html, body {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 18px; border-top: 1px solid var(--border);
 }
+
+/* ── Redo view ───────────────────────────────────────────────────────── */
+
+.redo-filter {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.redo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.redo-field input[type="text"],
+.redo-field input[type="number"] {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  border-radius: 3px;
+}
+.redo-field input:focus { outline: 1px solid var(--accent); outline-offset: 0; border-color: var(--border-strong); }
+
+.redo-field-check {
+  flex-direction: row;
+  align-items: center;
+}
+.redo-field-check label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px;
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.redo-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.redo-summary {
+  flex: 1;
+  text-align: right;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.redo-files:empty::before {
+  content: 'No candidates yet. Fill the filter and click "Find (dry run)".';
+}

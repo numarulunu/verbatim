@@ -72,6 +72,15 @@
   const renameBtn = registryView.querySelector('[data-action="rename-person"]');
   const mergeBtn = registryView.querySelector('[data-action="merge-person"]');
 
+  // Redo view
+  const redoView = document.querySelector('.view[data-view="redo"]');
+  const redoFilter = redoView.querySelector('.redo-filter');
+  const redoFindBtn = redoView.querySelector('[data-action="redo-find"]');
+  const redoRunBtn = redoView.querySelector('[data-action="redo-run"]');
+  const redoCancelBtn = redoView.querySelector('[data-action="redo-cancel"]');
+  const redoSummary = redoView.querySelector('.redo-summary');
+  const redoFilesEl = redoView.querySelector('.redo-files');
+
   // Modal
   const modalEl = document.querySelector('.modal');
   const modalTitle = modalEl.querySelector('.modal-title');
@@ -90,6 +99,7 @@
     renderStatusBar();
     renderBatchView();
     renderRegistryView();
+    renderRedoView();
   }
 
   function renderTabs() {
@@ -256,6 +266,63 @@
     }
   }
 
+  function renderRedoView() {
+    const daemonReady = state.daemon.status === 'ready';
+    const running = state.batch.status === 'running' || state.batch.status === 'cancelling';
+    redoFindBtn.disabled = !daemonReady || running;
+    redoRunBtn.disabled = !daemonReady || running;
+    redoCancelBtn.disabled = !running;
+
+    const s = state.batch;
+    if (running) {
+      redoSummary.textContent =
+        `running · ${(s.currentFileIndex + 1)}/${s.files.length}`;
+    } else if (s.status === 'complete' || s.status === 'failed' || s.status === 'cancelled') {
+      redoSummary.textContent =
+        `${s.status} · ${s.successful} ok / ${s.failed} failed · ${s.elapsed_s.toFixed(1)}s`;
+    } else {
+      redoSummary.textContent = '';
+    }
+
+    redoFilesEl.innerHTML = '';
+    for (const f of state.batch.files) {
+      const el = fileRowTmpl.content.firstElementChild.cloneNode(true);
+      el.dataset.status = f.status || 'pending';
+      el.querySelector('.file-name').textContent = basename(f.path);
+      el.querySelector('.file-name').title = f.path;
+      el.querySelector('.file-phase').textContent = f.phase
+        ? `${f.phase} (${f.completed_phases.length}/10)`
+        : '—';
+      const bar = el.querySelector('.file-progress-bar');
+      const completed = f.completed_phases.length;
+      const overall = Math.min(1, completed / 10 + (f.phase_progress || 0) / 10);
+      bar.style.width = `${Math.round(overall * 100)}%`;
+      el.querySelector('.file-progress-label').textContent = f.phase_progress > 0
+        ? `${Math.round(f.phase_progress * 100)}%`
+        : '';
+      el.querySelector('.file-status').textContent = (f.status || 'pending').replace('_', ' ');
+      redoFilesEl.appendChild(el);
+    }
+  }
+
+  function readRedoFilter() {
+    const form = new FormData(redoFilter);
+    const get = (k) => form.get(k);
+    const filter = {};
+    const threshold = Number(get('threshold'));
+    if (Number.isFinite(threshold)) filter.threshold = threshold;
+    const student = (get('student') || '').trim();
+    if (student) filter.student = student;
+    const teacher = (get('teacher') || '').trim();
+    if (teacher) filter.teacher = teacher;
+    const conf = Number(get('confidence_below'));
+    if (Number.isFinite(conf) && conf > 0) filter.confidence_below = conf;
+    const after = (get('after') || '').trim();
+    if (after) filter.after = after;
+    if (get('all')) filter.all = true;
+    return filter;
+  }
+
   function selectPerson(id) {
     activePersonId = id;
     window.vocality.send({ cmd: 'inspect_person', id: nextId('insp'), person_id: id });
@@ -404,6 +471,22 @@
         activePersonId = newId;
       },
     });
+  });
+
+  redoFindBtn.addEventListener('click', () => {
+    const filter = readRedoFilter();
+    filter.dry_run = true;
+    window.vocality.send({ cmd: 'redo_batch', id: nextId('redo-dry'), filter });
+  });
+
+  redoRunBtn.addEventListener('click', () => {
+    const filter = readRedoFilter();
+    filter.dry_run = false;
+    window.vocality.send({ cmd: 'redo_batch', id: nextId('redo'), filter });
+  });
+
+  redoCancelBtn.addEventListener('click', () => {
+    window.vocality.send({ cmd: 'cancel_batch', id: nextId('cancel') });
   });
 
   mergeBtn.addEventListener('click', () => {

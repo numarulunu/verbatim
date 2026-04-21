@@ -87,7 +87,39 @@
         </div>
       </section>
       <section class="view" data-view="redo" hidden>
-        <div class="view-placeholder">Redo view — stale-transcript filter, replay subset.</div>
+        <form class="redo-filter" autocomplete="off">
+          <div class="redo-field">
+            <label>Threshold (sessions)</label>
+            <input type="number" name="threshold" min="0" value="3">
+          </div>
+          <div class="redo-field">
+            <label>Student id</label>
+            <input type="text" name="student" placeholder="(any)">
+          </div>
+          <div class="redo-field">
+            <label>Teacher id</label>
+            <input type="text" name="teacher" placeholder="(any)">
+          </div>
+          <div class="redo-field">
+            <label>Confidence &lt;</label>
+            <input type="number" name="confidence_below" min="0" max="1" step="0.05" placeholder="(off)">
+          </div>
+          <div class="redo-field">
+            <label>After (YYYY-MM-DD)</label>
+            <input type="text" name="after" placeholder="(any date)">
+          </div>
+          <div class="redo-field redo-field-check">
+            <label><input type="checkbox" name="all"> --all (ignore filter)</label>
+          </div>
+          <div class="redo-actions">
+            <button type="button" class="btn btn-secondary" data-action="redo-find">Find (dry run)</button>
+            <button type="button" class="btn btn-primary" data-action="redo-run">Run redo</button>
+            <button type="button" class="btn btn-danger" data-action="redo-cancel" disabled>Cancel</button>
+            <span class="redo-summary"></span>
+          </div>
+        </form>
+
+        <div class="batch-files redo-files"></div>
       </section>
     </main>
 
