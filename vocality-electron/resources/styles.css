@@ -1,19 +1,22 @@
 /*
- * Vocality — dark dense aesthetic (brief §5). Gate-3 scaffold only.
- * Gate 6 fills in tab switcher, batch view, registry table, redo query
- * builder, settings modal.
+ * Vocality — dark monochrome aesthetic (CLAUDE.md: minimalist, premium,
+ * black/monochrome). Dense information display over spacious.
  */
 
 :root {
-  --bg: #111;
-  --bg-raised: #181818;
-  --fg: #e6e6e6;
+  --bg: #0e0e0e;
+  --bg-raised: #161616;
+  --bg-active: #1e1e1e;
+  --fg: #ededed;
   --fg-muted: #8a8a8a;
-  --border: #2a2a2a;
-  --accent: #7aa2f7;
-  --ok: #9ece6a;
-  --warn: #e0af68;
-  --error: #f7768e;
+  --fg-dim: #555;
+  --border: #232323;
+  --border-strong: #333;
+  --accent: #ffffff;
+  --ok: #7aa07a;
+  --warn: #b69359;
+  --error: #b06a6a;
+  --busy: #6a92b0;
 }
 
 * { box-sizing: border-box; }
@@ -23,22 +26,130 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
-main { padding: 24px; }
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
 
-h1 {
-  margin: 0 0 8px;
+/* ── Header ─────────────────────────────────────────────────────────── */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.brand {
+  padding: 14px 20px;
+  font-size: 14px;
   font-weight: 500;
-  font-size: 18px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-right: 1px solid var(--border);
+  color: var(--fg);
 }
 
-p {
-  margin: 0;
+.tab-bar {
+  display: flex;
+  gap: 0;
+  flex: 1;
+}
+
+.tab {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--fg-muted);
+  padding: 14px 20px;
+  font: inherit;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.tab:hover {
+  color: var(--fg);
+  background: var(--bg-active);
+}
+
+.tab.active {
+  color: var(--fg);
+  background: var(--bg);
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+.tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Main ────────────────────────────────────────────────────────────── */
+
+.app-main {
+  position: relative;
+  overflow: auto;
+}
+
+.view {
+  padding: 24px;
+  height: 100%;
+}
+
+.view[hidden] { display: none; }
+
+.view-placeholder {
+  color: var(--fg-dim);
+  font-style: italic;
+  border: 1px dashed var(--border);
+  padding: 40px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: 12px;
   color: var(--fg-muted);
 }
+
+.status-spacer { flex: 1; }
+
+.status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--fg-dim);
+}
+
+.status-dot[data-status="ready"]         { background: var(--ok); }
+.status-dot[data-status="spawning"]      { background: var(--busy); }
+.status-dot[data-status="shutting_down"] { background: var(--warn); }
+.status-dot[data-status="crashed"]       { background: var(--error); }
+.status-dot[data-status="down"]          { background: var(--fg-dim); }
+
+.status-last-error {
+  color: var(--error);
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-version { color: var(--fg-dim); font-variant-numeric: tabular-nums; }

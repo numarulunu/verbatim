@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const {
   initialState,
   reduceEvent,
+  setView,
   ERROR_LOG_CAP,
   WARNING_LOG_CAP,
 } = require('../app-state.js');
@@ -347,6 +348,23 @@ test('reduceEvent(malformed event with no type): returns same state', () => {
 });
 
 // ─── End-to-end sequence ───────────────────────────────────────────────────
+
+// ─── View switch ──────────────────────────────────────────────────────────
+
+test('setView(registry): flips state.view', () => {
+  const s = setView(initialState(), 'registry');
+  assert.equal(s.view, 'registry');
+});
+
+test('setView(same view): returns same state reference', () => {
+  const s = initialState();
+  assert.equal(setView(s, 'batch'), s);
+});
+
+test('setView(unknown): returns same state', () => {
+  const s = initialState();
+  assert.equal(setView(s, 'nonsense'), s);
+});
 
 test('end-to-end: ready → batch_started → phases → batch_complete', () => {
   let s = initialState();

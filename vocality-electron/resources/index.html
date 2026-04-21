@@ -9,11 +9,37 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Gate-3 scaffold: blank shell. Three-view layout lands in Gate 6. -->
-  <main>
-    <h1>Vocality</h1>
-    <p id="status">scaffold v0.1.0 — daemon not yet connected</p>
-  </main>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">Vocality</div>
+      <nav class="tab-bar" role="tablist">
+        <button type="button" class="tab" data-view="batch" role="tab">Batch</button>
+        <button type="button" class="tab" data-view="registry" role="tab">Registry</button>
+        <button type="button" class="tab" data-view="redo" role="tab">Redo</button>
+      </nav>
+    </header>
+
+    <main class="app-main">
+      <section class="view" data-view="batch">
+        <div class="view-placeholder">Batch view — input list, per-file progress, start/cancel.</div>
+      </section>
+      <section class="view" data-view="registry" hidden>
+        <div class="view-placeholder">Registry view — persons, voiceprints, rename, merge.</div>
+      </section>
+      <section class="view" data-view="redo" hidden>
+        <div class="view-placeholder">Redo view — stale-transcript filter, replay subset.</div>
+      </section>
+    </main>
+
+    <footer class="status-bar" aria-live="polite">
+      <span class="status-dot" data-status="down"></span>
+      <span class="status-label">daemon: down</span>
+      <span class="status-spacer"></span>
+      <span class="status-version"></span>
+      <span class="status-last-error"></span>
+    </footer>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

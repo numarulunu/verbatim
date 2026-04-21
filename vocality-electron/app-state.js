@@ -319,4 +319,14 @@ function reduceEvent(state, event) {
   }
 }
 
-module.exports = { initialState, reduceEvent, ERROR_LOG_CAP, WARNING_LOG_CAP, PHASE_COUNT };
+/**
+ * UI-only reducer: switch the visible view. Not an ipc_protocol event —
+ * triggered by clicks on the tab bar.
+ */
+function setView(state, view) {
+  if (!['batch', 'registry', 'redo'].includes(view)) return state;
+  if (state.view === view) return state;
+  return { ...state, view };
+}
+
+module.exports = { initialState, reduceEvent, setView, ERROR_LOG_CAP, WARNING_LOG_CAP, PHASE_COUNT };
