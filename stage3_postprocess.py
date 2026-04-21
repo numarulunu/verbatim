@@ -298,9 +298,11 @@ def update_voice_libraries(
                 pid, avg_conf, NEW_PERSON_CONFIDENCE_GATE, pid,
             )
             continue
-        _update_one_person(person, region_clips, per_person_durations[pid], meta, is_redo=is_redo)
-        # Decrement trust counter when a real update (not redo) lands.
-        if person.bootstrap_sessions_remaining > 0 and not is_redo:
+        did_update = _update_one_person(person, region_clips, per_person_durations[pid], meta, is_redo=is_redo)
+        # Decrement trust counter ONLY when a real (non-redo) update actually
+        # wrote a centroid — a silent no-op (no region had enough audio)
+        # must not burn down the bootstrap guard.
+        if did_update and person.bootstrap_sessions_remaining > 0 and not is_redo:
             person.bootstrap_sessions_remaining -= 1
             registry.save(person)
 
@@ -323,7 +325,7 @@ def _update_one_person(
     total_duration_s: float,
     meta: "SessionMeta",
     is_redo: bool = False,
-) -> None:
+) -> bool:
     from persons.embedder import embed
     from persons.matcher import person_dir as _pdir
 
@@ -392,6 +394,7 @@ def _update_one_person(
         "updated voice library for %r: regions=%s sessions=%d redo=%s",
         person.id, updated_regions, total_sessions(person), is_redo,
     )
+    return bool(active_centroids) or is_redo
 
 
 def _push_recent(path: Path, universal: np.ndarray) -> None:
