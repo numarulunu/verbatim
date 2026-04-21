@@ -1,10 +1,11 @@
 """
 Atomic soundfile write.
 
-Same pattern as utils.atomic_write but for WAV: write to <path>.tmp with
+Same pattern as utils.atomic_write but for WAV: write to <path>.ext.tmp with
 soundfile, fsync, os.replace into place. A crash between the write and the
 rename leaves the original <path> untouched (soundfile writes to the .tmp
-only — never to the real path).
+only — never to the real path). The <name>.ext.tmp naming matches the
+cleanup.purge_tmp_siblings *.tmp glob so orphaned tmps are reaped.
 """
 from __future__ import annotations
 
@@ -23,9 +24,12 @@ def atomic_write_wav(
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    # Match utils.atomic_write naming convention (out.wav.tmp not out.tmp.wav)
+    # so cleanup.purge_tmp_siblings catches orphans. We pass format="WAV"
+    # explicitly so soundfile doesn't need the extension to detect format.
+    tmp = path.with_suffix(path.suffix + ".tmp")
     try:
-        sf.write(str(tmp), audio, sr, subtype=subtype)
+        sf.write(str(tmp), audio, sr, subtype=subtype, format="WAV")
         # soundfile doesn't expose fsync; open r+b for a writable fd (needed on Windows).
         with open(tmp, "r+b") as fh:
             os.fsync(fh.fileno())
