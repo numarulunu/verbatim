@@ -29,18 +29,30 @@ from pathlib import Path
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
 
 from ipc_protocol import (
-    CancelAcceptedEvent,
+    CancelBatchCommand,
+    DetectCommand,
+    EditPersonCommand,
     ErrorEvent,
+    GetCorpusSummaryCommand,
+    InspectPersonCommand,
     InvalidCommand,
+    ListPersonsCommand,
+    MergePersonsCommand,
     PingCommand,
     PongEvent,
+    ProcessBatchCommand,
     ReadyEvent,
+    RedoBatchCommand,
+    RegisterPersonCommand,
+    RenamePersonCommand,
+    ScanFilesCommand,
     ShutdownCommand,
     ShuttingDownEvent,
     UnknownCommand,
     encode_event,
     parse_command,
 )
+import handlers
 from utils import cancellation
 from utils import engine_lock
 
@@ -87,6 +99,20 @@ def emit(event) -> None:
 # Handlers
 # ---------------------------------------------------------------------------
 
+_SIMPLE_HANDLERS = {
+    DetectCommand: handlers.handle_detect,
+    ListPersonsCommand: handlers.handle_list_persons,
+    RegisterPersonCommand: handlers.handle_register_person,
+    InspectPersonCommand: handlers.handle_inspect_person,
+    EditPersonCommand: handlers.handle_edit_person,
+    RenamePersonCommand: handlers.handle_rename_person,
+    MergePersonsCommand: handlers.handle_merge_persons,
+    ScanFilesCommand: handlers.handle_scan_files,
+    GetCorpusSummaryCommand: handlers.handle_get_corpus_summary,
+    CancelBatchCommand: handlers.handle_cancel_batch,
+}
+
+
 def _handle(cmd) -> bool:
     """
     Dispatch one command. Returns False if the loop should exit (shutdown),
@@ -102,12 +128,27 @@ def _handle(cmd) -> bool:
             emit(ShuttingDownEvent())
             return False
 
-        # Gate 4: every other command is "not implemented yet". Gate 5 replaces
-        # these stubs with real handlers.
+        handler = _SIMPLE_HANDLERS.get(type(cmd))
+        if handler is not None:
+            handler(cmd, emit)
+            return True
+
+        # Batch handlers (process_batch / redo_batch) land in the next
+        # sub-gate — for now they stub-error so the daemon stays responsive.
+        if isinstance(cmd, (ProcessBatchCommand, RedoBatchCommand)):
+            emit(ErrorEvent(
+                id=getattr(cmd, "id", None),
+                error_type="unknown_command",
+                message=f"{type(cmd).__name__} not yet implemented (arrives in Gate 5D)",
+                recoverable=True,
+                context={"cmd": getattr(cmd, "cmd", None)},
+            ))
+            return True
+
         emit(ErrorEvent(
             id=getattr(cmd, "id", None),
             error_type="unknown_command",
-            message=f"command {type(cmd).__name__} not implemented in Gate 4",
+            message=f"no dispatcher entry for {type(cmd).__name__}",
             recoverable=True,
             context={"cmd": getattr(cmd, "cmd", None)},
         ))

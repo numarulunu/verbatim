@@ -146,6 +146,42 @@ test('second daemon while first is alive: fails fast with engine_lock_held', { s
   }
 });
 
+test('detect: emits system_info with cpu + cuda flag + disk', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    d.send({ cmd: 'detect', id: 'det-1' });
+    const info = await d.nextEvent();
+    assert.equal(info.type, 'system_info');
+    assert.equal(info.id, 'det-1');
+    assert.equal(typeof info.cuda, 'boolean');
+    assert.ok(info.cpu && typeof info.cpu === 'object');
+    assert.ok(Number.isFinite(info.disk_free_gb));
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
+test('list_persons: returns an array (may be non-empty from prior sessions)', { skip: !pythonAvailable }, async () => {
+  const d = startDaemon();
+  try {
+    const ready = await d.nextEvent();
+    assert.equal(ready.type, 'ready');
+
+    d.send({ cmd: 'list_persons', id: 'lp-1' });
+    const listed = await d.nextEvent();
+    assert.equal(listed.type, 'persons_listed');
+    assert.equal(listed.id, 'lp-1');
+    assert.ok(Array.isArray(listed.persons));
+  } finally {
+    d.send({ cmd: 'shutdown' });
+    await d.waitExit();
+  }
+});
+
 test('unknown command: emits error event, daemon stays up', { skip: !pythonAvailable }, async () => {
   const d = startDaemon();
   try {
