@@ -106,15 +106,17 @@ def isolate_batch(sources: list[Path]) -> list[Path]:
 
 
 def _apply_post_gate(acapella: Path) -> None:
-    """Apply the SPECTRAL_GATE_DB cleanup in place, via soundfile round-trip."""
+    """Apply the SPECTRAL_GATE_DB cleanup in place, atomically."""
     import numpy as np
     import soundfile as sf
+
+    from utils.atomic_audio import atomic_write_wav
 
     audio, sr = sf.read(str(acapella), dtype="float32")
     if audio.ndim > 1:
         audio = audio.mean(axis=1).astype(np.float32)
     gated = spectral_gate(audio, sr=sr, floor_db=SPECTRAL_GATE_DB)
-    sf.write(str(acapella), gated, sr, subtype="PCM_16")
+    atomic_write_wav(acapella, gated, sr)
 
 
 def teardown_separator() -> None:
