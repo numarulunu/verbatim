@@ -229,6 +229,7 @@ def update_voice_libraries(
     acapella: "np.ndarray",
     sr: int,
     meta: "SessionMeta",
+    is_redo: bool = False,
 ) -> None:
     """
     Per-person region-aware running-mean centroid update.
@@ -282,7 +283,7 @@ def update_voice_libraries(
         person = label_to_person.get(_first_label_for_pid(pid, label_to_person)) or _load_or_none(pid)
         if person is None:
             continue
-        _update_one_person(person, region_clips, per_person_durations[pid], meta)
+        _update_one_person(person, region_clips, per_person_durations[pid], meta, is_redo=is_redo)
 
     # Collision sweep after any updates.
     for a, b, score in check_collisions():
@@ -302,6 +303,7 @@ def _update_one_person(
     region_clips: dict[str, list[np.ndarray]],
     total_duration_s: float,
     meta: "SessionMeta",
+    is_redo: bool = False,
 ) -> None:
     from persons.embedder import embed
     from persons.matcher import person_dir as _pdir
@@ -319,7 +321,13 @@ def _update_one_person(
             continue
         new_centroid = embed(concat)
         existing_path = pdir / f"{region}.npy"
-        if existing_path.exists():
+        if is_redo and existing_path.exists():
+            # Redo: this session's audio is ALREADY folded into the existing
+            # centroid. Re-blending would double-weight it. Keep the prior
+            # value and only re-derive `active_centroids` for the universal
+            # rollup below.
+            blended = np.load(existing_path)
+        elif existing_path.exists():
             prior = np.load(existing_path)
             n_prior = person.region_session_counts.get(region, 0)
             blended = (prior * n_prior + new_centroid) / (n_prior + 1)
@@ -330,11 +338,12 @@ def _update_one_person(
                 log.warning("drift for %s.%s: %.3f > %.3f", person.id, region, drift, DRIFT_WARNING_THRESHOLD)
         else:
             blended = new_centroid
-        np.save(existing_path, blended)
-        person.region_session_counts[region] = person.region_session_counts.get(region, 0) + 1
-        if region not in person.observed_regions:
-            person.observed_regions.append(region)
-        updated_regions.append(region)
+        if not is_redo:
+            np.save(existing_path, blended)
+            person.region_session_counts[region] = person.region_session_counts.get(region, 0) + 1
+            if region not in person.observed_regions:
+                person.observed_regions.append(region)
+            updated_regions.append(region)
         if region in REGION_LABELS:
             active_centroids.append(blended)
 
@@ -345,19 +354,20 @@ def _update_one_person(
         np.save(pdir / "universal.npy", universal)
         _push_recent(pdir / "recent.npy", universal)
 
-    # Role + session counts.
-    if meta.teacher_id == person.id:
-        person.n_sessions_as_teacher += 1
-    elif meta.student_id == person.id:
-        person.n_sessions_as_student += 1
-    person.total_hours += total_duration_s / 3600.0
-    person.last_updated = meta.date
-    if person.first_seen is None:
-        person.first_seen = meta.date
-    registry.save(person)
+    if not is_redo:
+        # Role + session counts.
+        if meta.teacher_id == person.id:
+            person.n_sessions_as_teacher += 1
+        elif meta.student_id == person.id:
+            person.n_sessions_as_student += 1
+        person.total_hours += total_duration_s / 3600.0
+        person.last_updated = meta.date
+        if person.first_seen is None:
+            person.first_seen = meta.date
+        registry.save(person)
     log.info(
-        "updated voice library for %r: regions=%s sessions=%d",
-        person.id, updated_regions, total_sessions(person),
+        "updated voice library for %r: regions=%s sessions=%d redo=%s",
+        person.id, updated_regions, total_sessions(person), is_redo,
     )
 
 

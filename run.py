@@ -382,7 +382,7 @@ def _redo_one(polished_path: Path) -> None:
         identified, cluster_emb, label_to_person, audio, 16000,
     )
     polished = st3.polish(verified, meta.language)
-    st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta)
+    st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta, is_redo=True)
 
     transcript["segments"] = polished
     transcript["participants"] = [
