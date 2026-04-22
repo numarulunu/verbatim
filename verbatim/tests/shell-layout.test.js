@@ -5,23 +5,34 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+function assertOrderedPatterns(source, patterns) {
+  let cursor = 0;
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(source.slice(cursor));
+    assert.ok(match, `missing ${pattern}`);
+    cursor += match.index + match[0].length;
+  }
+}
+
 test('App uses the single-shell components instead of tabbed primary views', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx'), 'utf8');
 
-  assert.ok(source.indexOf('<TitleBar />') < source.indexOf('<WorkspaceHeader'));
-  assert.ok(source.indexOf('<WorkspaceHeader') < source.indexOf("<main className='shell-main'>"));
-  assert.ok(source.indexOf("<main className='shell-main'>") < source.indexOf('<QueuePane workspace={workspace} status={status} />'));
-  assert.ok(source.indexOf('<QueuePane workspace={workspace} status={status} />') < source.indexOf('<SettingsRail'));
-  assert.ok(source.indexOf('<SettingsRail') < source.indexOf('<BottomActionBar'));
-  assert.ok(source.indexOf('<BottomActionBar') < source.indexOf('<RegistryPanel'));
-  assert.ok(source.indexOf('<RegistryPanel') < source.indexOf('<RedoPanel'));
+  assertOrderedPatterns(source, [
+    /<TitleBar\s*\/>/,
+    /<WorkspaceHeader/,
+    /<main className='shell-main'>/,
+    /<QueuePane/,
+    /<SettingsRail/,
+    /<BottomActionBar/,
+    /<RegistryPanel/,
+    /<RedoPanel/,
+  ]);
 
-  assert.ok(settingsRailSource.includes("label: 'Custom'"));
-  assert.ok(settingsRailSource.includes('onOpenRegistry'));
-  assert.ok(settingsRailSource.includes('Registry'));
-  assert.ok(settingsRailSource.includes('onOpenRedo'));
-  assert.ok(settingsRailSource.includes('Redo'));
+  assert.match(settingsRailSource, /options=\{\[\{\s*value:\s*'custom',\s*label:\s*'Custom'/);
+  assert.match(settingsRailSource, /onClick=\{onOpenRegistry\}[\s\S]*>Registry<\/?Button>/);
+  assert.match(settingsRailSource, /onClick=\{onOpenRedo\}[\s\S]*>Redo<\/?Button>/);
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
