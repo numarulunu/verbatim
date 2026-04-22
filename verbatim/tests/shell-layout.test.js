@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const ts = require(path.join(__dirname, '..', 'renderer', 'node_modules', 'typescript'));
 
 function assertOrderedPatterns(source, patterns) {
   let cursor = 0;
@@ -15,9 +16,109 @@ function assertOrderedPatterns(source, patterns) {
   }
 }
 
+function parseTsxFile(filePath) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return { source, sourceFile };
+}
+
+function walk(node, visit) {
+  visit(node);
+  ts.forEachChild(node, (child) => walk(child, visit));
+}
+
+function getJsxTagName(node) {
+  if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+    return node.tagName.getText();
+  }
+
+  return null;
+}
+
+function getJsxAttributes(node) {
+  if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+    return node.attributes.properties;
+  }
+
+  return [];
+}
+
+function getJsxTextContent(node) {
+  let text = '';
+
+  for (const child of node.children) {
+    if (ts.isJsxText(child)) {
+      text += child.getText().trim();
+    }
+  }
+
+  return text;
+}
+
+function findJsxElement(sourceFile, tagName, predicate) {
+  let found = null;
+
+  walk(sourceFile, (node) => {
+    if (found) {
+      return;
+    }
+
+    if (!ts.isJsxSelfClosingElement(node) && !ts.isJsxElement(node)) {
+      return;
+    }
+
+    const opening = ts.isJsxElement(node) ? node.openingElement : node;
+    if (opening.tagName.getText() !== tagName) {
+      return;
+    }
+
+    if (predicate(opening, node)) {
+      found = node;
+    }
+  });
+
+  return found;
+}
+
+function getJsxAttribute(attributes, name) {
+  return attributes.find((attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === name) || null;
+}
+
+function getStringAttributeValue(attribute) {
+  if (!attribute || !attribute.initializer || !ts.isStringLiteral(attribute.initializer)) {
+    return null;
+  }
+
+  return attribute.initializer.text;
+}
+
+function optionsContainCustomObject(attribute) {
+  if (!attribute || !attribute.initializer || !ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression || !ts.isArrayLiteralExpression(attribute.initializer.expression)) {
+    return false;
+  }
+
+  return attribute.initializer.expression.elements.some((element) => {
+    if (!ts.isObjectLiteralExpression(element)) {
+      return false;
+    }
+
+    const valueProp = element.properties.find((prop) => ts.isPropertyAssignment(prop) && prop.name.getText() === 'value');
+    const labelProp = element.properties.find((prop) => ts.isPropertyAssignment(prop) && prop.name.getText() === 'label');
+    return Boolean(
+      valueProp
+      && labelProp
+      && ts.isStringLiteral(valueProp.initializer)
+      && valueProp.initializer.text === 'custom'
+      && ts.isStringLiteral(labelProp.initializer)
+      && labelProp.initializer.text === 'Custom'
+    );
+  });
+}
+
 test('App uses the single-shell components instead of tabbed primary views', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
-  const settingsRailSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx'), 'utf8');
+  const settingsRailPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx');
+  const { sourceFile: settingsRailSourceFile } = parseTsxFile(settingsRailPath);
 
   assertOrderedPatterns(source, [
     /<TitleBar\s*\/>/,
@@ -30,9 +131,24 @@ test('App uses the single-shell components instead of tabbed primary views', () 
     /<RedoPanel/,
   ]);
 
-  assert.match(settingsRailSource, /options=\{\[\{\s*value:\s*'custom',\s*label:\s*'Custom'/);
-  assert.match(settingsRailSource, /onClick=\{onOpenRegistry\}[\s\S]*>Registry<\/?Button>/);
-  assert.match(settingsRailSource, /onClick=\{onOpenRedo\}[\s\S]*>Redo<\/?Button>/);
+  const select = findJsxElement(settingsRailSourceFile, 'Select', (opening) => {
+    const valueAttr = getJsxAttribute(opening.attributes.properties, 'value');
+    const optionsAttr = getJsxAttribute(opening.attributes.properties, 'options');
+    return getStringAttributeValue(valueAttr) === 'custom' && optionsContainCustomObject(optionsAttr);
+  });
+  assert.ok(select, 'missing Select custom option');
+
+  const registryButton = findJsxElement(settingsRailSourceFile, 'Button', (opening, node) => {
+    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry';
+  });
+  assert.ok(registryButton, 'missing Registry button');
+
+  const redoButton = findJsxElement(settingsRailSourceFile, 'Button', (opening, node) => {
+    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo';
+  });
+  assert.ok(redoButton, 'missing Redo button');
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
