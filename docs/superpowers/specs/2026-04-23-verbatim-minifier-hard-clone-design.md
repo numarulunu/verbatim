@@ -159,7 +159,7 @@ If additional transcription detail is needed, it should fit into Minifier's stat
 
 ### Empty State
 
-The current Verbatim empty state is too decorative and too centered as a standalone card. The replacement should behave like a Minifier-style quiet queue placeholder:
+The current Verbatim empty state is too decorative and too centered as a standalone card. The replacement should behave like a Minifier-style quiet queue placeholder anchored inside the table region instead of a separate hero card:
 
 - flatter treatment
 - denser spacing
@@ -176,7 +176,7 @@ The right pane should keep Minifier's sequence and spacing rhythm:
 
 Verbatim content mapping:
 
-- top dropdown can remain `Custom` for now or later map to Verbatim presets
+- top dropdown uses the same single-value presentation as Minifier and should display `Custom` in this pass
 - impact card shows queue selection and run-impact information using Minifier's stat density and horizontal meter style
 - stacked controls map Verbatim's run options such as model, language, polish mode, isolation, diarization, and any required advanced settings
 
