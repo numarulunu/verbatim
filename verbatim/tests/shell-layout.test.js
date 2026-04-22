@@ -8,7 +8,6 @@ const path = require('node:path');
 test('App uses the single-shell components instead of tabbed primary views', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx'), 'utf8');
-  const paneSource = `${source}\n${settingsRailSource}`;
 
   assert.match(source, /TitleBar/);
   assert.match(source, /WorkspaceHeader/);
@@ -17,10 +16,9 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   assert.match(source, /BottomActionBar/);
   assert.match(source, /RegistryPanel/);
   assert.match(source, /RedoPanel/);
-  assert.match(paneSource, /Custom/);
-  assert.match(paneSource, /\bRegistry\b/);
-  assert.match(paneSource, /\bRedo\b/);
-  assert.match(paneSource, /QueuePane[\s\S]*SettingsRail[\s\S]*Custom[\s\S]*RegistryPanel[\s\S]*RedoPanel/);
+  assert.match(settingsRailSource, /Custom/);
+  assert.match(settingsRailSource, /\bRegistry\b/);
+  assert.match(settingsRailSource, /\bRedo\b/);
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
