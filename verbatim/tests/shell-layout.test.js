@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require(path.join(__dirname, '..', 'renderer', 'node_modules', 'typescript'));
+const typescriptPath = require.resolve('typescript', { paths: [path.join(__dirname, '..', 'renderer')] });
+const ts = require(typescriptPath);
 
 function assertOrderedPatterns(source, patterns) {
   let cursor = 0;
@@ -25,6 +26,39 @@ function parseTsxFile(filePath) {
 function walk(node, visit) {
   visit(node);
   ts.forEachChild(node, (child) => walk(child, visit));
+}
+
+function unwrapParenthesized(node) {
+  let current = node;
+
+  while (current && ts.isParenthesizedExpression(current)) {
+    current = current.expression;
+  }
+
+  return current;
+}
+
+function getReturnedJsxTree(sourceFile, functionName) {
+  let returned = null;
+
+  walk(sourceFile, (node) => {
+    if (returned || !ts.isFunctionDeclaration(node) || !node.name || node.name.text !== functionName || !node.body) {
+      return;
+    }
+
+    walk(node.body, (child) => {
+      if (returned || !ts.isReturnStatement(child) || !child.expression) {
+        return;
+      }
+
+      const expression = unwrapParenthesized(child.expression);
+      if (ts.isJsxElement(expression) || ts.isJsxSelfClosingElement(expression)) {
+        returned = expression;
+      }
+    });
+  });
+
+  return returned;
 }
 
 function getJsxTagName(node) {
@@ -55,10 +89,10 @@ function getJsxTextContent(node) {
   return text;
 }
 
-function findJsxElement(sourceFile, tagName, predicate) {
+function findJsxElement(root, tagName, predicate) {
   let found = null;
 
-  walk(sourceFile, (node) => {
+  walk(root, (node) => {
     if (found) {
       return;
     }
@@ -119,6 +153,7 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx');
   const { sourceFile: settingsRailSourceFile } = parseTsxFile(settingsRailPath);
+  const settingsRailJsx = getReturnedJsxTree(settingsRailSourceFile, 'SettingsRail');
 
   assertOrderedPatterns(source, [
     /<TitleBar\s*\/>/,
@@ -131,20 +166,20 @@ test('App uses the single-shell components instead of tabbed primary views', () 
     /<RedoPanel/,
   ]);
 
-  const select = findJsxElement(settingsRailSourceFile, 'Select', (opening) => {
+  const select = findJsxElement(settingsRailJsx, 'Select', (opening) => {
     const valueAttr = getJsxAttribute(opening.attributes.properties, 'value');
     const optionsAttr = getJsxAttribute(opening.attributes.properties, 'options');
     return getStringAttributeValue(valueAttr) === 'custom' && optionsContainCustomObject(optionsAttr);
   });
   assert.ok(select, 'missing Select custom option');
 
-  const registryButton = findJsxElement(settingsRailSourceFile, 'Button', (opening, node) => {
+  const registryButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
     return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry';
   });
   assert.ok(registryButton, 'missing Registry button');
 
-  const redoButton = findJsxElement(settingsRailSourceFile, 'Button', (opening, node) => {
+  const redoButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
     return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo';
   });
