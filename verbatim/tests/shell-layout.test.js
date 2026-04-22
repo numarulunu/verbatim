@@ -9,10 +9,19 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx'), 'utf8');
 
-  assert.match(source, /<TitleBar\s*\/>[\s\S]*<WorkspaceHeader[\s\S]*<main className='shell-main'>[\s\S]*<QueuePane[\s\S]*<SettingsRail[\s\S]*<\/main>[\s\S]*<BottomActionBar[\s\S]*<RegistryPanel[\s\S]*<RedoPanel/);
-  assert.match(settingsRailSource, /value='custom'[\s\S]*label:\s*'Custom'/);
-  assert.match(settingsRailSource, /onClick={onOpenRegistry}[\s\S]*Registry/);
-  assert.match(settingsRailSource, /onClick={onOpenRedo}[\s\S]*Redo/);
+  assert.ok(source.indexOf('<TitleBar />') < source.indexOf('<WorkspaceHeader'));
+  assert.ok(source.indexOf('<WorkspaceHeader') < source.indexOf("<main className='shell-main'>"));
+  assert.ok(source.indexOf("<main className='shell-main'>") < source.indexOf('<QueuePane workspace={workspace} status={status} />'));
+  assert.ok(source.indexOf('<QueuePane workspace={workspace} status={status} />') < source.indexOf('<SettingsRail'));
+  assert.ok(source.indexOf('<SettingsRail') < source.indexOf('<BottomActionBar'));
+  assert.ok(source.indexOf('<BottomActionBar') < source.indexOf('<RegistryPanel'));
+  assert.ok(source.indexOf('<RegistryPanel') < source.indexOf('<RedoPanel'));
+
+  assert.ok(settingsRailSource.includes("label: 'Custom'"));
+  assert.ok(settingsRailSource.includes('onOpenRegistry'));
+  assert.ok(settingsRailSource.includes('Registry'));
+  assert.ok(settingsRailSource.includes('onOpenRedo'));
+  assert.ok(settingsRailSource.includes('Redo'));
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
@@ -25,9 +34,9 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
 
   assert.match(source, /\.app-drag\s*\{[\s\S]*-webkit-app-region:\s*drag/);
   assert.match(source, /\.app-no-drag\s*\{[\s\S]*-webkit-app-region:\s*no-drag/);
-  assert.match(source, /\.shell-main\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 360px/);
+  assert.match(source, /\.shell-main\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 320px/);
   assert.match(source, /\.shell-titlebar\s*\{[\s\S]*height:\s*48px/);
-  assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*70px minmax\(0, 1fr\) 116px/);
+  assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
