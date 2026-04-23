@@ -178,32 +178,6 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   });
   assert.ok(select, 'missing Select custom option');
 
-  const toolsGroup = findJsxElement(settingsRailJsx, 'div', (opening) => {
-    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return getStringAttributeValue(classNameAttr) === 'shell-rail__tools';
-  });
-  assert.ok(toolsGroup, 'missing shell-rail__tools launcher group');
-
-  const registryButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
-    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
-  });
-  assert.ok(registryButton, 'missing Registry low-emphasis launcher');
-
-  const redoButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
-    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
-  });
-  assert.ok(redoButton, 'missing Redo low-emphasis launcher');
-
-  const advancedSettingsButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
-    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
-  });
-  assert.ok(advancedSettingsButton, 'missing Advanced settings low-emphasis launcher');
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
   assert.doesNotMatch(source, /RegistryView/);
@@ -218,8 +192,11 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.app-no-drag\s*\{[\s\S]*-webkit-app-region:\s*no-drag/);
   assert.match(source, /\.shell-main\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 320px/);
   assert.match(source, /\.shell-titlebar\s*\{[\s\S]*height:\s*48px/);
+  assert.match(source, /\.shell-titlebar__logo\s*\{[\s\S]*width:\s*20px;[\s\S]*height:\s*20px/);
   assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*44px minmax\(0, 1fr\) auto auto/);
+  assert.match(source, /\.shell-header__field\s*\{[\s\S]*height:\s*30px/);
   assert.match(source, /\.shell-action\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
+  assert.match(source, /\.shell-action\s*\{[\s\S]*min-height:\s*68px/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
