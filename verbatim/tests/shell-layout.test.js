@@ -229,7 +229,10 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.shell-queue__table-head\s*\{[\s\S]*font-size:\s*10px/);
   assert.match(source, /\.shell-queue__row\s*\{[\s\S]*min-height:\s*44px/);
   assert.match(queuePaneSource, /shell-queue__footer/);
-  assert.match(fileRowSource, /function classLabel\([^)]*\)\s*\{\s*return 'Audio';\s*\}/);
+  assert.match(fileRowSource, /return 'Audio';/);
+  assert.match(fileRowSource, /<div className='shell-queue__class'>\{[^}]+\}<\/div>/);
+  assert.match(fileRowSource, /<div className=\{statusTone\(progress, file\.alreadyProcessed\)\}>\{statusLabel\(progress, file\.alreadyProcessed\)\}<\/div>/);
+  assert.doesNotMatch(fileRowSource, /<div className='shell-queue__class'>\{statusLabel\(progress, file\.alreadyProcessed\)\}<\/div>/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
