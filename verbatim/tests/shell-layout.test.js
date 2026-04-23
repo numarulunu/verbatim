@@ -222,8 +222,8 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.shell-titlebar__logo\s*\{[\s\S]*width:\s*20px;[\s\S]*height:\s*20px/);
   assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*44px minmax\(0, 1fr\) auto auto/);
   assert.match(source, /\.shell-header__field\s*\{[\s\S]*height:\s*30px/);
-  assert.match(source, /\.shell-action\s*\{[\s\S]*grid-template-columns:\s*240px 1fr/);
-  assert.match(source, /\.shell-action\s*\{[\s\S]*min-height:\s*70px/);
+  assert.match(source, /\.shell-action\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
+  assert.match(source, /\.shell-action\s*\{[\s\S]*min-height:\s*68px/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {

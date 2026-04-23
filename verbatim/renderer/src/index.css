@@ -460,8 +460,8 @@ body {
 .shell-action {
   position: relative;
   display: grid;
-  grid-template-columns: 240px 1fr;
-  min-height: 70px;
+  grid-template-columns: 180px 1fr;
+  min-height: 68px;
   background: rgba(18, 18, 18, 0.96);
 }
 
@@ -522,18 +522,7 @@ body {
   min-width: 0;
 }
 
-.shell-action__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
 
-.shell-action__stats {
-  font-size: 10px;
-  line-height: 1.4;
-  color: #9a9a9a;
-}
 
 .shell-action__headline {
   font-size: 12px;
