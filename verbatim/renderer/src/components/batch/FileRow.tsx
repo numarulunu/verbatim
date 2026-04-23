@@ -13,10 +13,7 @@ interface Props {
 
 const QUEUE_GRID = '28px minmax(0, 1fr) 92px 72px 120px';
 
-function classLabel(progress?: FileProgress, alreadyProcessed?: boolean) {
-  if (progress?.state === 'failed') return 'Error';
-  if (progress?.state === 'running') return 'Active';
-  if (alreadyProcessed) return 'Done';
+function classLabel() {
   return 'Audio';
 }
 
@@ -80,9 +77,10 @@ export function FileRow({ file, progress, selected, onToggle, running }: Props) 
         <div className='shell-queue__file-meta'>{metaLine}</div>
       </div>
 
-      <div className='shell-queue__class'>{classLabel(progress, file.alreadyProcessed)}</div>
+      <div className='shell-queue__class'>{classLabel()}</div>
       <div className='shell-queue__size'>{fmtSize(file.size)}</div>
       <div className={statusTone(progress, file.alreadyProcessed)}>{statusLabel(progress, file.alreadyProcessed)}</div>
     </div>
   );
 }
+

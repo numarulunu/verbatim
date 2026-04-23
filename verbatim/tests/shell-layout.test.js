@@ -215,6 +215,7 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 test('renderer styling exposes drag helpers for the custom title bar', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'index.css'), 'utf8');
   const queuePaneSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'QueuePane.tsx'), 'utf8');
+  const fileRowSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'batch', 'FileRow.tsx'), 'utf8');
 
   assert.match(source, /\.app-drag\s*\{[\s\S]*-webkit-app-region:\s*drag/);
   assert.match(source, /\.app-no-drag\s*\{[\s\S]*-webkit-app-region:\s*no-drag/);
@@ -228,6 +229,7 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.shell-queue__table-head\s*\{[\s\S]*font-size:\s*10px/);
   assert.match(source, /\.shell-queue__row\s*\{[\s\S]*min-height:\s*44px/);
   assert.match(queuePaneSource, /shell-queue__footer/);
+  assert.match(fileRowSource, /function classLabel\([^)]*\)\s*\{\s*return 'Audio';\s*\}/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
