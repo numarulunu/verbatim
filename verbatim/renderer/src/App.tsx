@@ -13,6 +13,10 @@ import { verbatimClient } from './bridge/verbatimClient';
 import { useBatchWorkspace } from './hooks/useBatchWorkspace';
 import type { DaemonStatus, ResourceStats, Toast, UpdateStatus } from './types';
 
+function shouldShowUpdateBanner(next: UpdateStatus | null) {
+  return Boolean(next && next.kind !== 'checking' && next.kind !== 'current');
+}
+
 const DEFAULT_STATS: ResourceStats = {
   cpu_pct: 6,
   gpu_pct: 1,
@@ -56,7 +60,7 @@ export default function App() {
     verbatimClient.updateStatus().then((next) => {
       if (alive) {
         setUpdateState(next ?? null);
-        setShowBanner(Boolean(next));
+        setShowBanner(shouldShowUpdateBanner(next ?? null));
       }
     }).catch(() => {});
 
@@ -64,7 +68,7 @@ export default function App() {
     const offUpdate = verbatimClient.onUpdateStatus((payload: unknown) => {
       const next = payload as UpdateStatus | null;
       setUpdateState(next ?? null);
-      setShowBanner(Boolean(next));
+      setShowBanner(shouldShowUpdateBanner(next));
     });
     const offEvent = verbatimClient.onEvent((event) => {
       if (event.type === 'batch_complete') {

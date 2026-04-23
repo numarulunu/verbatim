@@ -48,9 +48,9 @@ export function UpdateBanner({ status, onDismiss }: { status: UpdateStatus; onDi
   const banner = bannerCopy(status);
 
   return (
-    <div className="h-7 shrink-0 flex items-center justify-center gap-3 text-xs px-3 bg-accent/[0.09] border-b border-accent/20">
+    <div className="h-7 shrink-0 flex items-center justify-center gap-3 text-xs px-3 bg-[#171717] border-b border-white/[0.06]">
       {banner.icon}
-      <span className="text-ink-100">{banner.text}</span>
+      <span className="text-ink-200">{banner.text}</span>
       <button
         onClick={onDismiss}
         className="ml-2 text-ink-500 hover:text-ink-100 p-0.5 rounded hover:bg-white/[0.05]"

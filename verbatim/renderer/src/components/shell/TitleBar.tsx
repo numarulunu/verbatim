@@ -19,10 +19,10 @@ function ControlButton({
       title={label}
       onClick={onClick}
       className={[
-        'app-no-drag flex h-[26px] w-[30px] items-center justify-center rounded-[3px] border transition-colors',
+        'app-no-drag flex h-[28px] w-[32px] items-center justify-center rounded-[4px] border transition-colors',
         danger
-          ? 'border-transparent text-ink-400 hover:border-red-500/80 hover:bg-red-500 hover:text-white'
-          : 'border-transparent text-ink-400 hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-ink-100',
+          ? 'border-transparent text-ink-400 hover:bg-red-500 hover:text-white'
+          : 'border-transparent text-ink-400 hover:bg-white/[0.06] hover:text-ink-100',
       ].join(' ')}
     >
       {children}
@@ -35,9 +35,12 @@ export function TitleBar() {
     <header className='app-drag shell-titlebar'>
       <div className='shell-titlebar__brand'>
         <div className='shell-titlebar__logo'>
-          <AudioLines size={12} className='text-emerald-300' />
+          <AudioLines size={12} className='text-ink-100' />
         </div>
-        <div className='shell-titlebar__name'>Verbatim</div>
+        <div className='shell-titlebar__wordmark'>
+          <div className='shell-titlebar__name'>Verbatim</div>
+          <div className='shell-titlebar__meta'>Transcribe</div>
+        </div>
       </div>
 
       <div className='shell-titlebar__controls app-no-drag'>

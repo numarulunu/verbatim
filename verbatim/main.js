@@ -19,6 +19,7 @@ const { resolveEngineCommand, resolveRendererTarget } = require('./runtime-helpe
 const { shouldStartBackgroundServices } = require('./startup-policy.js');
 const { buildStatusEnvelope } = require('./status-envelope.js');
 const { createUpdateStatusState } = require('./update-status-state.js');
+const { normalizeUpdaterMessage } = require('./updater-message.js');
 const { runWindowControlAction } = require('./window-controls.js');
 
 // electron-updater is an optional dependency at dev time (unused until
@@ -214,7 +215,7 @@ function initAutoUpdater() {
   autoUpdater.on('checking-for-update',    () => relay('checking'));
   autoUpdater.on('update-available',       (info) => relay('available', { version: info.version }));
   autoUpdater.on('update-not-available',   () => relay('current'));
-  autoUpdater.on('error',                  (err) => relay('error', { message: err && err.message }));
+  autoUpdater.on('error',                  (err) => relay('error', { message: normalizeUpdaterMessage(err) }));
   autoUpdater.on('download-progress',      (p) => relay('downloading', {
     percent: p.percent, bytes_per_second: p.bytesPerSecond,
   }));
