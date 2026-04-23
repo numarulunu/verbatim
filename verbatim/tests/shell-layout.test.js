@@ -152,7 +152,9 @@ function optionsContainCustomObject(attribute) {
 test('App uses the single-shell components instead of tabbed primary views', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx');
+  const workspaceHeaderPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'WorkspaceHeader.tsx');
   const { sourceFile: settingsRailSourceFile } = parseTsxFile(settingsRailPath);
+  const { source: workspaceHeaderSource } = parseTsxFile(workspaceHeaderPath);
   const settingsRailJsx = getReturnedJsxTree(settingsRailSourceFile, 'SettingsRail');
 
   assertOrderedPatterns(source, [
@@ -166,6 +168,9 @@ test('App uses the single-shell components instead of tabbed primary views', () 
     /<RedoPanel/,
   ]);
 
+  assert.match(source, /<TitleBar\s*\/>[\s\S]*<WorkspaceHeader[\s\S]*<main className='shell-main'>/);
+  assert.match(source, /<BottomActionBar[\s\S]*<RegistryPanel[\s\S]*<RedoPanel/);
+
   const select = findJsxElement(settingsRailJsx, 'Select', (opening) => {
     const valueAttr = getJsxAttribute(opening.attributes.properties, 'value');
     const optionsAttr = getJsxAttribute(opening.attributes.properties, 'options');
@@ -173,24 +178,35 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   });
   assert.ok(select, 'missing Select custom option');
 
-  const registryButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
-    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    const variantAttr = getJsxAttribute(opening.attributes.properties, 'variant');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && getStringAttributeValue(variantAttr) === 'ghost';
+  const toolsGroup = findJsxElement(settingsRailJsx, 'div', (opening) => {
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    return getStringAttributeValue(classNameAttr) === 'shell-rail__tools';
   });
-  assert.ok(registryButton, 'missing Registry low-emphasis entry');
+  assert.ok(toolsGroup, 'missing shell-rail__tools launcher group');
 
-  const redoButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
+  const registryButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    const variantAttr = getJsxAttribute(opening.attributes.properties, 'variant');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && getStringAttributeValue(variantAttr) === 'ghost';
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry';
   });
-  assert.ok(redoButton, 'missing Redo low-emphasis entry');
+  assert.ok(registryButton, 'missing Registry launcher');
+
+  const redoButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
+    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo';
+  });
+  assert.ok(redoButton, 'missing Redo launcher');
+
+  const advancedSettingsButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
+    const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings';
+  });
+  assert.ok(advancedSettingsButton, 'missing Advanced settings launcher');
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
   assert.doesNotMatch(source, /RegistryView/);
   assert.doesNotMatch(source, /RedoView/);
+  assert.doesNotMatch(workspaceHeaderSource, /shell-header__actions/);
 });
 
 test('renderer styling exposes drag helpers for the custom title bar', () => {
