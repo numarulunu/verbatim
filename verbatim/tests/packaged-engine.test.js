@@ -12,6 +12,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveRendererTarget } = require('../runtime-helpers.js');
+
+function readPackageJson() {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+}
 
 test('engine directory exists (electron-builder extraResources target)', () => {
   const enginePath = path.join(__dirname, '..', 'engine');
@@ -35,4 +40,40 @@ test('build-config/electron-builder.yml exists', () => {
     fs.existsSync(cfg),
     'build-config/electron-builder.yml must be present for `npm run build`.',
   );
+});
+
+test('packaged renderer target resolves to renderer/dist/index.html inside app.asar', () => {
+  const target = resolveRendererTarget({
+    isPackaged: true,
+    rendererUrl: '',
+    appDir: path.join('C:', 'repo', 'verbatim'),
+    resourcesPath: path.join('C:', 'Program Files', 'Verbatim Transcribe', 'resources'),
+  });
+
+  assert.deepEqual(target, {
+    kind: 'file',
+    value: path.join(
+      'C:',
+      'Program Files',
+      'Verbatim Transcribe',
+      'resources',
+      'app.asar',
+      'renderer',
+      'dist',
+      'index.html',
+    ),
+  });
+});
+
+test('start script routes through the conditional helper', () => {
+  const pkg = readPackageJson();
+  assert.equal(pkg.scripts.start, 'node scripts/start.js');
+});
+
+test('publish-win runs prep steps before electron-builder publish', () => {
+  const pkg = readPackageJson();
+  assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /fetch-ffmpeg/);
+  assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /build-engine/);
+  assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /renderer:build/);
+  assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /electron-builder --win --publish always/);
 });

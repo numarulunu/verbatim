@@ -1,47 +1,64 @@
 # verbatim
 
-Electron GUI wrapper for the Verbatim ASR pipeline. The Python engine
-lives at the repo root (`run.py`, `persons/`, `stage*.py`). This directory
-holds the desktop app that drives it.
+Electron desktop wrapper for the Verbatim ASR pipeline. The Electron shell stays in `verbatim/`; the primary renderer now lives in `verbatim/renderer/` as a Vite + React app loaded through the existing preload bridge.
 
-**Status:** Gate 3 scaffold. Blank window opens; test suite passes against
-stubs. IPC contract, daemon supervision, three-view UI, and packaging land
-in Gates 4–8 per `../VERBATIM_ELECTRON_BRIEF.md`.
-
-## Quick start (development)
+## Development
 
 ```bash
 cd verbatim
-npm install            # ~200 MB; pulls electron + electron-builder
-npm test               # node --test — all stubs pass
-npm start              # opens a titled blank window
+npm install
+npm --prefix renderer install
+npm test
 ```
 
-## Directory layout
+Renderer-only development:
 
+```bash
+cd verbatim
+npm run renderer:dev
 ```
+
+Electron + React renderer development:
+
+```bash
+cd verbatim
+$env:VERBATIM_RENDERER_URL='http://127.0.0.1:5173'
+npm start
+```
+
+`VERBATIM_RENDERER_URL` tells Electron to load the live Vite server. Without it, `npm start` builds `renderer/dist/` first and opens the built renderer.
+
+## Build
+
+```bash
+cd verbatim
+npm run build-win
+```
+
+That builds `verbatim/renderer/dist/` and then runs `electron-builder` with `build-config/electron-builder.yml`.
+
+## Layout
+
+```text
 verbatim/
-├── package.json
-├── main.js                  # main process — window + single-instance lock
-├── preload.js               # contextBridge — exposes window.verbatim.*
-├── runtime-helpers.js       # pure-Node helpers (path resolution)
-├── app-state.js             # pure reducer for renderer state
-├── resources/               # renderer assets
-│   ├── index.html
-│   ├── app.js
-│   └── styles.css
-├── engine/                  # PyInstaller drop zone (populated at build time)
-│   └── README.md
-├── tests/                   # node --test targets
-│   ├── app-state.test.js
-│   ├── runtime-helpers.test.js
-│   └── packaged-engine.test.js
-└── build-config/
-    └── electron-builder.yml
+|- package.json
+|- main.js
+|- preload.js
+|- runtime-helpers.js
+|- renderer/                 # primary React renderer workspace
+|  |- src/
+|  |- dist/                  # production renderer output
+|- engine/                   # PyInstaller drop zone
+|- tests/
+|  |- runtime-helpers.test.js
+|  |- renderer-normalize.test.js
+|  |- packaged-engine.test.js
+|- build-config/
+   |- electron-builder.yml
 ```
 
-## Brief reference
+## Notes
 
-See `VERBATIM_ELECTRON_BRIEF.md` at the repo root for the full design:
-daemon IPC contract, cancellation discipline, data-persistence rules,
-error taxonomy, packaging pipeline.
+- `window.verbatim` remains the only privileged renderer surface.
+- Packaged builds resolve the renderer from `resources/app.asar/renderer/dist/index.html`.
+- The Python engine is still bundled through `extraResources` under `resources/engine/`.

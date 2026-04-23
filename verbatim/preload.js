@@ -12,7 +12,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('verbatim', {
-  version: '0.1.0',
+  minimizeWindow: () => ipcRenderer.invoke('verbatim:window-control', 'minimize'),
+  toggleMaximizeWindow: () => ipcRenderer.invoke('verbatim:window-control', 'toggle-maximize'),
+  closeWindow: () => ipcRenderer.invoke('verbatim:window-control', 'close'),
 
   /**
    * Send a command to the daemon. Resolves once main has forwarded it
@@ -48,6 +50,10 @@ contextBridge.exposeInMainWorld('verbatim', {
   /** Restart the daemon (after crash or for a fresh run). */
   restart: () => ipcRenderer.invoke('verbatim:restart'),
 
+  pickFolder: (defaultPath) => ipcRenderer.invoke('verbatim:pick-folder', defaultPath),
+
+  openPath: (targetPath) => ipcRenderer.invoke('verbatim:open-path', targetPath),
+
   /** Read the persisted user settings (HF/Anthropic tokens, data dir). */
   getSettings: () => ipcRenderer.invoke('verbatim:get-settings'),
 
@@ -58,6 +64,8 @@ contextBridge.exposeInMainWorld('verbatim', {
   /** Subscribe to electron-updater lifecycle events. `kind` is one of
    *  'checking' | 'available' | 'current' | 'downloading' | 'downloaded'
    *  | 'error'. No events in dev mode. */
+  updateStatus: () => ipcRenderer.invoke('verbatim:update-status'),
+
   onUpdateStatus: (cb) => {
     const listener = (_evt, payload) => cb(payload);
     ipcRenderer.on('verbatim:update-status', listener);

@@ -60,6 +60,7 @@ class EngineManager {
     this._exitPromise = null;
     this._exitResolve = null;
     this._lastReady = null; // cached ready event for new subscribers
+    this._lastExit = null;
   }
 
   get status() {
@@ -68,6 +69,10 @@ class EngineManager {
 
   get lastReady() {
     return this._lastReady;
+  }
+
+  get lastExit() {
+    return this._lastExit;
   }
 
   /**
@@ -133,11 +138,13 @@ class EngineManager {
       if (this._status === STATUS.SPAWNING) {
         this._readyReject(err);
       }
+      this._lastExit = { code: null, signal: 'ERROR', message: err.message };
       this._setStatus(STATUS.CRASHED);
     });
 
     child.on('exit', (code, signal) => {
       const wasShuttingDown = this._status === STATUS.SHUTTING_DOWN;
+      this._lastExit = { code, signal };
       this._setStatus(wasShuttingDown ? STATUS.DOWN : STATUS.CRASHED);
       if (this._readyReject && this._status === STATUS.CRASHED) {
         this._readyReject(new Error(

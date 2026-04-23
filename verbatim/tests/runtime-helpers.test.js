@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { resolveEnginePath, defaultDataDir, resolveEngineCommand } = require('../runtime-helpers.js');
+const { resolveEnginePath, defaultDataDir, resolveEngineCommand, resolveRendererTarget } = require('../runtime-helpers.js');
 
 test('resolveEnginePath: packaged mode uses process.resourcesPath', () => {
   const p = resolveEnginePath(true, '/fake/resources', '/fake/dev');
@@ -43,4 +43,47 @@ test('resolveEngineCommand: dev → .venv python + engine_daemon.py at repo root
   assert.equal(cmd.command, path.join(repo, '.venv', 'Scripts', 'python.exe'));
   assert.deepEqual(cmd.args, ['-u', path.join(repo, 'engine_daemon.py')]);
   assert.equal(cmd.cwd, repo);
+});
+
+test('resolveRendererTarget returns dev URL when VERBATIM_RENDERER_URL is set', () => {
+  const result = resolveRendererTarget({
+    isPackaged: false,
+    rendererUrl: 'http://127.0.0.1:5173',
+    appDir: 'C:/repo/verbatim',
+    resourcesPath: 'C:/repo/verbatim',
+  });
+  assert.deepEqual(result, { kind: 'url', value: 'http://127.0.0.1:5173' });
+});
+
+test('resolveRendererTarget ignores VERBATIM_RENDERER_URL in packaged mode', () => {
+  const result = resolveRendererTarget({
+    isPackaged: true,
+    rendererUrl: 'http://127.0.0.1:5173',
+    appDir: 'C:/repo/verbatim',
+    resourcesPath: 'C:/Program Files/Verbatim Transcribe/resources',
+  });
+  assert.equal(result.kind, 'file');
+  assert.match(result.value, /app\.asar[\\/]renderer[\\/]dist[\\/]index\.html$/);
+});
+
+test('resolveRendererTarget returns built index.html path in packaged mode', () => {
+  const result = resolveRendererTarget({
+    isPackaged: true,
+    rendererUrl: '',
+    appDir: 'C:/repo/verbatim',
+    resourcesPath: 'C:/Program Files/Verbatim Transcribe/resources',
+  });
+  assert.equal(result.kind, 'file');
+  assert.match(result.value, /renderer[\\/]dist[\\/]index\.html$/);
+});
+
+test('resolveRendererTarget falls back to local renderer dist path in dev mode', () => {
+  const result = resolveRendererTarget({
+    isPackaged: false,
+    rendererUrl: '',
+    appDir: 'C:/repo/verbatim',
+    resourcesPath: 'C:/repo/verbatim',
+  });
+  assert.equal(result.kind, 'file');
+  assert.match(result.value, /renderer[\\/]dist[\\/]index\.html$/);
 });

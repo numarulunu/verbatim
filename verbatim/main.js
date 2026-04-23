@@ -11,11 +11,15 @@
  */
 'use strict';
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { EngineManager, STATUS } = require('./engine-manager.js');
-const { resolveEngineCommand } = require('./runtime-helpers.js');
+const { resolveEngineCommand, resolveRendererTarget } = require('./runtime-helpers.js');
+const { shouldStartBackgroundServices } = require('./startup-policy.js');
+const { buildStatusEnvelope } = require('./status-envelope.js');
+const { createUpdateStatusState } = require('./update-status-state.js');
+const { runWindowControlAction } = require('./window-controls.js');
 
 // electron-updater is an optional dependency at dev time (unused until
 // a packaged build hits an installed user's machine). Import lazily so
@@ -30,6 +34,7 @@ function loadAutoUpdater() {
 
 let mainWindow = null;
 let engine = null;
+const updateStatusState = createUpdateStatusState();
 
 function settingsFilePath() {
   return path.join(app.getPath('userData'), 'verbatim-settings.json');
@@ -60,12 +65,16 @@ function daemonEnv() {
   return env;
 }
 
-function createWindow() {
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 1180,
+    minHeight: 760,
     title: 'Verbatim',
     backgroundColor: '#111111',
+    frame: false,
+    autoHideMenuBar: true,
     // Security (non-negotiable per brief §3).
     webPreferences: {
       contextIsolation: true,
@@ -75,11 +84,31 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'resources', 'index.html'));
+  let rendererLoaded = false;
+
+  const target = resolveRendererTarget({
+    isPackaged: app.isPackaged,
+    rendererUrl: process.env.VERBATIM_RENDERER_URL || '',
+    appDir: __dirname,
+    resourcesPath: process.resourcesPath,
+  });
+
+  try {
+    if (target.kind === 'url') {
+      await mainWindow.loadURL(target.value);
+    } else {
+      await mainWindow.loadFile(target.value);
+    }
+    rendererLoaded = true;
+  } catch (err) {
+    console.error('[window] failed to load renderer:', err && err.message ? err.message : err);
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  return rendererLoaded;
 }
 
 function sendToRenderer(channel, payload) {
@@ -101,7 +130,7 @@ async function startEngine() {
     env: daemonEnv(),
   });
   engine.onEvent((evt) => sendToRenderer('verbatim:event', evt));
-  engine.onStatus((s) => sendToRenderer('verbatim:status', s));
+  engine.onStatus(() => sendToRenderer('verbatim:status', buildStatusEnvelope(engine)));
 
   try {
     await engine.spawn();
@@ -123,13 +152,28 @@ function registerIpcHandlers() {
     return { ok: true };
   });
   ipcMain.handle('verbatim:status', () => {
-    if (!engine) return { status: STATUS.DOWN, lastReady: null };
-    return { status: engine.status, lastReady: engine.lastReady };
+    return buildStatusEnvelope(engine);
   });
+  ipcMain.handle('verbatim:update-status', () => updateStatusState.current());
+  ipcMain.handle('verbatim:window-control', (_evt, action) => runWindowControlAction(mainWindow, action));
   ipcMain.handle('verbatim:restart', async () => {
     if (engine) await engine.stop();
     await startEngine();
     return { ok: true };
+  });
+  ipcMain.handle('verbatim:pick-folder', async (_evt, defaultPath) => {
+    const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+      properties: ['openDirectory'],
+      defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+  ipcMain.handle('verbatim:open-path', async (_evt, targetPath) => {
+    if (typeof targetPath !== 'string' || !targetPath.trim()) {
+      throw new Error('Path is required');
+    }
+    const error = await shell.openPath(targetPath);
+    return { ok: error.length === 0, error: error || null };
   });
   ipcMain.handle('verbatim:get-settings', () => loadSettings());
   ipcMain.handle('verbatim:save-settings', (_evt, settings) => {
@@ -163,7 +207,8 @@ function initAutoUpdater() {
   autoUpdater.logger = console;
 
   const relay = (kind, payload = {}) => {
-    sendToRenderer('verbatim:update-status', { kind, ...payload });
+    const next = updateStatusState.set({ kind, ...payload });
+    sendToRenderer('verbatim:update-status', next);
   };
 
   autoUpdater.on('checking-for-update',    () => relay('checking'));
@@ -194,7 +239,15 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     registerIpcHandlers();
-    createWindow();
+    let rendererLoaded = false;
+    try {
+      rendererLoaded = await createWindow();
+    } catch (err) {
+      console.error('[window] failed to create window:', err && err.message ? err.message : err);
+    }
+    if (!shouldStartBackgroundServices(rendererLoaded)) {
+      return;
+    }
     await startEngine();
     initAutoUpdater();
   });
@@ -206,7 +259,11 @@ if (!gotLock) {
   });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void createWindow().catch((err) => {
+        console.error('[window] activate failed:', err && err.message ? err.message : err);
+      });
+    }
   });
 
   app.on('before-quit', async (event) => {

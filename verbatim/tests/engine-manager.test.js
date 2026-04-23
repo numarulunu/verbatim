@@ -214,6 +214,7 @@ test('crash (non-zero exit) flips status to crashed', async () => {
   queueMicrotask(() => fake.fakeExit(139, 'SIGSEGV'));
   await new Promise((r) => setImmediate(r));
   assert.equal(mgr.status, STATUS.CRASHED);
+  assert.deepEqual(mgr.lastExit, { code: 139, signal: 'SIGSEGV' });
   assert.ok(seen.includes(STATUS.CRASHED));
 });
 

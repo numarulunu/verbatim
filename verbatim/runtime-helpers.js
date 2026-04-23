@@ -42,14 +42,27 @@ function defaultDataDir(localAppData) {
 }
 
 /**
- * Decide how to invoke the engine based on the environment.
+ * Resolve where the renderer entry point lives.
  *
- * Packaged builds ship a PyInstaller folder at `resources/engine/` with a
- * single `verbatim-engine.exe` entry point. Development runs against the
- * repo root's `.venv/Scripts/python.exe engine_daemon.py`.
+ * Dev mode prefers the Vite URL when provided, otherwise the local
+ * renderer dist/index.html. Packaged builds load the built renderer from
+ * the app bundle.
  *
  * Arguments injected so this stays pure.
  */
+function resolveRendererTarget({ isPackaged, rendererUrl, appDir, resourcesPath }) {
+  if (rendererUrl && !isPackaged) {
+    return { kind: 'url', value: rendererUrl };
+  }
+  const baseDir = isPackaged
+    ? path.join(resourcesPath, 'app.asar', 'renderer')
+    : path.join(appDir, 'renderer');
+  return {
+    kind: 'file',
+    value: path.join(baseDir, 'dist', 'index.html'),
+  };
+}
+
 function resolveEngineCommand(isPackaged, resourcesPath, moduleDirname) {
   if (isPackaged) {
     return {
@@ -67,4 +80,4 @@ function resolveEngineCommand(isPackaged, resourcesPath, moduleDirname) {
   };
 }
 
-module.exports = { resolveEnginePath, defaultDataDir, resolveEngineCommand };
+module.exports = { resolveEnginePath, defaultDataDir, resolveEngineCommand, resolveRendererTarget };

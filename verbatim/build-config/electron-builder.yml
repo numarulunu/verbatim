@@ -20,6 +20,7 @@ directories:
 
 win:
   target: nsis
+  artifactName: Verbatim-Transcribe-Setup-${version}.${ext}
   # Icon file optional — if resources/icon.ico is absent, electron-
   # builder falls back to the default Electron icon. Drop a 256x256 .ico
   # in there whenever the branded one is ready.
