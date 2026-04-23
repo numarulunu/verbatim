@@ -55,7 +55,15 @@ export function SettingsRail({
   return (
     <aside className='shell-rail'>
       <div className='shell-rail__top'>
-        <Select value='custom' onChange={() => {}} options={[{ value: 'custom', label: 'Custom' }]} className='shell-rail__preset' />
+        <div className='shell-rail__preset'>
+          <span className='shell-kicker'>Preset</span>
+          <div className='shell-rail__preset-shell'>
+            <select value='custom' disabled aria-label='Preset shell preview' className='shell-rail__preset-control'>
+              <option value='custom'>Custom</option>
+            </select>
+            <span className='shell-rail__preset-icon' aria-hidden='true'>v</span>
+          </div>
+        </div>
 
         <div className='shell-card shell-card--impact'>
           <div className='shell-card__head'>

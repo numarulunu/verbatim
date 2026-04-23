@@ -126,6 +126,11 @@ function getStringAttributeValue(attribute) {
   return attribute.initializer.text;
 }
 
+function hasClassToken(attribute, token) {
+  const value = getStringAttributeValue(attribute);
+  return Boolean(value && value.split(/\s+/).includes(token));
+}
+
 function optionsContainCustomObject(attribute) {
   if (!attribute || !attribute.initializer || !ts.isJsxExpression(attribute.initializer) || !attribute.initializer.expression || !ts.isArrayLiteralExpression(attribute.initializer.expression)) {
     return false;
@@ -170,44 +175,49 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 
   assert.match(source, /<TitleBar\s*\/>[\s\S]*<WorkspaceHeader[\s\S]*<main className='shell-main'>/);
   assert.match(source, /<BottomActionBar[\s\S]*<RegistryPanel[\s\S]*<RedoPanel/);
-  assert.match(settingsRailSource, /<Select value='custom'/);
-  assert.match(settingsRailSource, /shell-card/);
-  assert.match(settingsRailSource, /shell-rail__tools/);
-  assert.match(settingsRailSource, /onOpenRegistry/);
-  assert.match(settingsRailSource, /onOpenRedo/);
-  assert.match(settingsRailSource, /onOpenSettings/);
-
-  const select = findJsxElement(settingsRailJsx, 'Select', (opening) => {
+  const presetControl = findJsxElement(settingsRailJsx, 'select', (opening) => {
     const valueAttr = getJsxAttribute(opening.attributes.properties, 'value');
     const optionsAttr = getJsxAttribute(opening.attributes.properties, 'options');
-    return getStringAttributeValue(valueAttr) === 'custom' && optionsContainCustomObject(optionsAttr);
+    const ariaLabelAttr = getJsxAttribute(opening.attributes.properties, 'aria-label');
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    const disabledAttr = getJsxAttribute(opening.attributes.properties, 'disabled');
+    return getStringAttributeValue(valueAttr) === 'custom'
+      && getStringAttributeValue(ariaLabelAttr) === 'Preset shell preview'
+      && hasClassToken(classNameAttr, 'shell-rail__preset-control')
+      && Boolean(disabledAttr);
   });
-  assert.ok(select, 'missing Select custom option');
+  assert.ok(presetControl, 'missing disabled preset control');
+
+  const impactCard = findJsxElement(settingsRailJsx, 'div', (opening) => {
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    return hasClassToken(classNameAttr, 'shell-card') && hasClassToken(classNameAttr, 'shell-card--impact');
+  });
+  assert.ok(impactCard, 'missing shell-card impact summary');
 
   const toolsGroup = findJsxElement(settingsRailJsx, 'div', (opening) => {
     const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return getStringAttributeValue(classNameAttr) === 'shell-rail__tools';
+    return hasClassToken(classNameAttr, 'shell-rail__tools');
   });
   assert.ok(toolsGroup, 'missing shell-rail__tools launcher group');
 
   const registryButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
     const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && hasClassToken(classNameAttr, 'shell-rail__tool-link');
   });
   assert.ok(registryButton, 'missing Registry low-emphasis launcher');
 
   const redoButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
     const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && hasClassToken(classNameAttr, 'shell-rail__tool-link');
   });
   assert.ok(redoButton, 'missing Redo low-emphasis launcher');
 
   const advancedSettingsButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
     const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings' && hasClassToken(classNameAttr, 'shell-rail__tool-link');
   });
   assert.ok(advancedSettingsButton, 'missing Advanced settings low-emphasis launcher');
 
