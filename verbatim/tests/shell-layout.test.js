@@ -186,22 +186,24 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 
   const registryButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry';
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
   });
-  assert.ok(registryButton, 'missing Registry launcher');
+  assert.ok(registryButton, 'missing Registry low-emphasis launcher');
 
   const redoButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo';
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
   });
-  assert.ok(redoButton, 'missing Redo launcher');
+  assert.ok(redoButton, 'missing Redo low-emphasis launcher');
 
   const advancedSettingsButton = findJsxElement(toolsGroup, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings';
+    const classNameAttr = getJsxAttribute(opening.attributes.properties, 'className');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenSettings' && getJsxTextContent(node) === 'Advanced settings' && getStringAttributeValue(classNameAttr) === 'shell-rail__tool-link';
   });
-  assert.ok(advancedSettingsButton, 'missing Advanced settings launcher');
-
+  assert.ok(advancedSettingsButton, 'missing Advanced settings low-emphasis launcher');
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
   assert.doesNotMatch(source, /RegistryView/);
