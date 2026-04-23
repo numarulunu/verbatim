@@ -9,8 +9,8 @@ function statusMessage(status: DaemonStatus, running: boolean, selectedCount: nu
   return 'Engine offline.';
 }
 
-function detailLine(stats: ResourceStats) {
-  return `${stats.cpu_pct.toFixed(0)}% CPU | ${stats.ram_used_gb.toFixed(1)} / ${stats.ram_total_gb.toFixed(0)} GB RAM | ${stats.gpu_pct.toFixed(0)}% GPU`;
+function detailLine(selectedCount: number) {
+  return selectedCount > 0 ? `${selectedCount} selected | ready to start.` : 'Queue idle | choose folders to begin.';
 }
 
 export function BottomActionBar({
@@ -56,7 +56,7 @@ export function BottomActionBar({
         <div className='shell-action__copy'>
           <div className='shell-action__headline'>{statusMessage(status, running, selectedCount)}</div>
           <div className='shell-action__detail'>
-            {running ? `${completedCount}/${selectedCount} complete | ${Math.round(elapsed)}s elapsed` : detailLine(stats)}
+            {running ? `${completedCount}/${selectedCount} complete | ${Math.round(elapsed)}s elapsed` : detailLine(selectedCount)}
           </div>
         </div>
 
