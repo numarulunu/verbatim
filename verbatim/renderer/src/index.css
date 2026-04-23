@@ -213,34 +213,42 @@ body {
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--shell-border-strong);
-  background: rgba(12, 12, 12, 0.86);
+  background: rgba(11, 11, 11, 0.92);
 }
 
 .shell-queue__head {
   display: flex;
-  align-items: center;
+  align-items: end;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 14px 8px;
+  padding: 10px 14px 7px;
   border-bottom: 1px solid var(--shell-border);
+  background: rgba(14, 14, 14, 0.96);
+}
+
+.shell-queue__head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .shell-queue__status {
-  margin-top: 2px;
-  font-size: 12px;
+  font-size: 11px;
   color: #d8d8d8;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
 }
 
 .shell-queue__head-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11px;
-  color: #9a9a9a;
+  font-size: 10px;
+  color: #8f8f8f;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
 }
 
 .shell-queue__body {
@@ -254,17 +262,17 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: rgba(15, 15, 15, 0.7);
+  background: rgba(10, 10, 10, 0.72);
 }
 
 .shell-queue__table-head {
   display: grid;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 14px;
   border-bottom: 1px solid var(--shell-border);
-  background: rgba(17, 17, 17, 0.96);
+  background: rgba(15, 15, 15, 0.98);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -278,18 +286,115 @@ body {
 }
 
 .shell-queue__row {
-  min-height: 32px;
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
   padding: 0 14px;
   border-bottom: 1px solid var(--shell-border);
+  background: transparent;
+  transition: background 140ms ease;
+}
+
+.shell-queue__row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.shell-queue__row--running {
+  background: rgba(73, 211, 148, 0.06);
+}
+
+.shell-queue__row--done {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.shell-queue__row--failed {
+  background: rgba(225, 82, 82, 0.08);
+}
+
+.shell-queue__check {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-radius: 4px;
+  accent-color: #49d394;
+  background: #1a1a1a;
+}
+
+.shell-queue__file {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shell-queue__file-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.2;
+  color: #f1f1f1;
+}
+
+.shell-queue__file-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-queue__file-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #777;
+  letter-spacing: 0.04em;
+}
+
+.shell-queue__class,
+.shell-queue__size,
+.shell-queue__state {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.shell-queue__class {
+  color: #a3a3a3;
+}
+
+.shell-queue__size {
+  color: #919191;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell-queue__state {
+  color: #b6b6b6;
+}
+
+.shell-queue__state--running {
+  color: var(--shell-accent);
+}
+
+.shell-queue__state--done {
+  color: #d2d2d2;
+}
+
+.shell-queue__state--failed {
+  color: #f08b8b;
 }
 
 .shell-queue__empty-row {
   display: flex;
   align-items: center;
-  min-height: 128px;
-  padding: 12px 14px;
+  min-height: 132px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--shell-border);
-  color: #9a9a9a;
 }
 
 .shell-queue__empty-copy {
@@ -297,7 +402,7 @@ body {
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
-  color: #b0b0b0;
+  color: #a8a8a8;
 }
 
 .shell-queue__empty-copy .shell-kicker {
@@ -310,11 +415,11 @@ body {
   gap: 14px;
   padding: 8px 14px;
   border-top: 1px solid var(--shell-border);
-  color: #9a9a9a;
-  font-size: 11px;
+  color: #8f8f8f;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  background: rgba(17, 17, 17, 0.96);
+  letter-spacing: 0.14em;
+  background: rgba(15, 15, 15, 0.98);
 }
 
 .shell-queue__footer strong {
@@ -548,8 +653,4 @@ body {
   height: 68vh;
   min-height: 0;
 }
-
-
-
-
 

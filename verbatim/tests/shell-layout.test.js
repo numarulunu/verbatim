@@ -214,6 +214,7 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 
 test('renderer styling exposes drag helpers for the custom title bar', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'index.css'), 'utf8');
+  const queuePaneSource = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'QueuePane.tsx'), 'utf8');
 
   assert.match(source, /\.app-drag\s*\{[\s\S]*-webkit-app-region:\s*drag/);
   assert.match(source, /\.app-no-drag\s*\{[\s\S]*-webkit-app-region:\s*no-drag/);
@@ -224,6 +225,9 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.shell-header__field\s*\{[\s\S]*height:\s*30px/);
   assert.match(source, /\.shell-action\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
   assert.match(source, /\.shell-action\s*\{[\s\S]*min-height:\s*68px/);
+  assert.match(source, /\.shell-queue__table-head\s*\{[\s\S]*font-size:\s*10px/);
+  assert.match(source, /\.shell-queue__row\s*\{[\s\S]*min-height:\s*44px/);
+  assert.match(queuePaneSource, /shell-queue__footer/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
@@ -232,9 +236,4 @@ test('main window is frameless for the custom shell chrome', () => {
   assert.match(source, /new BrowserWindow\(\{[\s\S]*frame:\s*false/);
   assert.match(source, /verbatim:window-control/);
 });
-
-
-
-
-
 

@@ -24,13 +24,14 @@ export function QueuePane({
   return (
     <section className='shell-queue'>
       <header className='shell-queue__head'>
-        <div>
+        <div className='shell-queue__head-copy'>
           <div className='shell-kicker'>Queue</div>
           <div className='shell-queue__status'>{statusLabel(status, workspace.running)}</div>
         </div>
         <div className='shell-queue__head-meta'>
           <span>{workspace.selection.size} selected</span>
           <span>{workspace.scanSummary.fresh} fresh</span>
+          <span>{workspace.scanSummary.total} files</span>
         </div>
       </header>
 

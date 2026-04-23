@@ -38,31 +38,6 @@ export function FileList({
     </button>
   );
 
-  if (files.length === 0) {
-    return (
-      <div className='shell-queue__table flex-1 min-h-0'>
-        <div className='shell-queue__table-head' style={{ gridTemplateColumns: QUEUE_GRID }}>
-          <input
-            type='checkbox'
-            checked={false}
-            disabled
-            className='w-3.5 h-3.5 rounded accent-[#7C5CFF] bg-ink-800 disabled:opacity-40'
-          />
-          <span>File</span>
-          <span>Duration</span>
-          <span>Size</span>
-          <span>State</span>
-        </div>
-        <div className='shell-queue__empty-row'>
-          <div className='shell-queue__empty-copy'>
-            <span className='shell-kicker'>Queue empty</span>
-            <span>Pick an input folder to load files into this queue.</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const allSelected = files.length > 0 && files.filter((f) => !f.alreadyProcessed).every((f) => selection.has(f.path));
 
   return (
@@ -72,27 +47,36 @@ export function FileList({
           type='checkbox'
           checked={allSelected}
           onChange={(e) => onToggleAll(e.target.checked)}
-          disabled={running}
-          className='w-3.5 h-3.5 rounded accent-[#7C5CFF] bg-ink-800 disabled:opacity-40'
+          disabled={running || files.length === 0}
+          className='shell-queue__check'
         />
-        <SortBtn k='name' label='File' />
-        <SortBtn k='duration' label='Duration' />
+        <SortBtn k='name' label='Filename' />
+        <span>Class</span>
         <SortBtn k='size' label='Size' />
-        <span>State</span>
+        <span>Status</span>
       </div>
 
-      <div className='shell-queue__rows'>
-        {files.map((f) => (
-          <FileRow
-            key={f.path}
-            file={f}
-            progress={progress[f.path]}
-            selected={selection.has(f.path)}
-            onToggle={() => onToggle(f.path)}
-            running={running}
-          />
-        ))}
-      </div>
+      {files.length === 0 ? (
+        <div className='shell-queue__empty-row'>
+          <div className='shell-queue__empty-copy'>
+            <span className='shell-kicker'>Queue</span>
+            <span>Pick an input folder to load files.</span>
+          </div>
+        </div>
+      ) : (
+        <div className='shell-queue__rows'>
+          {files.map((f) => (
+            <FileRow
+              key={f.path}
+              file={f}
+              progress={progress[f.path]}
+              selected={selection.has(f.path)}
+              onToggle={() => onToggle(f.path)}
+              running={running}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
