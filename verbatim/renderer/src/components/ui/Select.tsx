@@ -22,7 +22,7 @@ export function Select({ value, onChange, options, className }: Props) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          'h-10 w-full appearance-none rounded-[6px] bg-white/[0.02] border border-white/10 pl-3 pr-8 text-[13px] text-ink-50',
+          'h-10 w-full appearance-none rounded-[6px] border border-white/[0.08] bg-transparent pl-3 pr-8 text-[13px] text-ink-50',
           'hover:border-white/15 focus:border-accent focus:ring-1 focus:ring-accent-ring focus:outline-none transition-colors',
         )}
       >

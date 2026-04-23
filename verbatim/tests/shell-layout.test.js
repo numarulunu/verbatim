@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -198,7 +198,8 @@ test('renderer styling exposes drag helpers for the custom title bar', () => {
   assert.match(source, /\.app-no-drag\s*\{[\s\S]*-webkit-app-region:\s*no-drag/);
   assert.match(source, /\.shell-main\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 320px/);
   assert.match(source, /\.shell-titlebar\s*\{[\s\S]*height:\s*48px/);
-  assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
+  assert.match(source, /\.shell-header__row\s*\{[\s\S]*grid-template-columns:\s*44px minmax\(0, 1fr\) auto auto/);
+  assert.match(source, /\.shell-action\s*\{[\s\S]*grid-template-columns:\s*180px 1fr/);
 });
 
 test('main window is frameless for the custom shell chrome', () => {
@@ -207,3 +208,8 @@ test('main window is frameless for the custom shell chrome', () => {
   assert.match(source, /new BrowserWindow\(\{[\s\S]*frame:\s*false/);
   assert.match(source, /verbatim:window-control/);
 });
+
+
+
+
+

@@ -12,18 +12,18 @@ interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 rounded-[6px] border text-sm font-medium transition-all duration-150 ease-out-soft btn-focus disabled:opacity-40 disabled:cursor-not-allowed select-none';
+  'inline-flex items-center justify-center gap-1.5 rounded-[6px] border font-medium transition-all duration-150 ease-out-soft btn-focus disabled:opacity-40 disabled:cursor-not-allowed select-none';
 
 const sizes: Record<Size, string> = {
-  sm: 'h-[30px] px-3 text-xs',
-  md: 'h-10 px-3.5 text-[13px]',
+  sm: 'h-[30px] px-3 text-[12px]',
+  md: 'h-10 px-4 text-[13px]',
 };
 
 const variants: Record<Variant, string> = {
   primary:
     'bg-accent text-white border border-transparent hover:bg-accent-hover active:translate-y-[1px]',
   secondary:
-    'bg-white/[0.02] text-ink-50 hover:bg-white/[0.05] border border-white/10 hover:border-white/15',
+    'bg-white/[0.02] text-ink-50 hover:bg-white/[0.05] border border-white/[0.08] hover:border-white/15',
   ghost:
     'bg-transparent text-ink-200 hover:bg-white/[0.04] hover:text-ink-50 border border-transparent',
   danger:

@@ -137,7 +137,7 @@ body {
 
 .shell-header__row {
   display: grid;
-  grid-template-columns: 180px 1fr auto auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -158,19 +158,6 @@ body {
   border-radius: 6px;
   background: rgba(25, 25, 25, 0.96);
   border: 1px solid var(--shell-border);
-}
-
-.shell-header__input {
-  border: 0;
-  background: transparent;
-  height: 44px;
-  padding: 0;
-  box-shadow: none;
-}
-
-.shell-header__input:focus {
-  border: 0;
-  box-shadow: none;
 }
 
 .shell-header__actions {
@@ -365,7 +352,7 @@ body {
 .shell-action {
   position: relative;
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 180px 1fr;
   min-height: 72px;
   background: rgba(18, 18, 18, 0.96);
 }
@@ -431,6 +418,7 @@ body {
   height: 68vh;
   min-height: 0;
 }
+
 
 
 
