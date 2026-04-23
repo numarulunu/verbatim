@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -175,15 +175,17 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 
   const registryButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry';
+    const variantAttr = getJsxAttribute(opening.attributes.properties, 'variant');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRegistry' && getJsxTextContent(node) === 'Registry' && getStringAttributeValue(variantAttr) === 'ghost';
   });
-  assert.ok(registryButton, 'missing Registry button');
+  assert.ok(registryButton, 'missing Registry low-emphasis entry');
 
   const redoButton = findJsxElement(settingsRailJsx, 'Button', (opening, node) => {
     const onClickAttr = getJsxAttribute(opening.attributes.properties, 'onClick');
-    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo';
+    const variantAttr = getJsxAttribute(opening.attributes.properties, 'variant');
+    return onClickAttr && onClickAttr.initializer && ts.isJsxExpression(onClickAttr.initializer) && onClickAttr.initializer.expression && onClickAttr.initializer.expression.getText() === 'onOpenRedo' && getJsxTextContent(node) === 'Redo' && getStringAttributeValue(variantAttr) === 'ghost';
   });
-  assert.ok(redoButton, 'missing Redo button');
+  assert.ok(redoButton, 'missing Redo low-emphasis entry');
 
   assert.doesNotMatch(source, /type Tab =/);
   assert.doesNotMatch(source, /tab === 'batch'/);
