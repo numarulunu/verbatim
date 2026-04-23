@@ -8,14 +8,14 @@ function PathRow({
   onChange,
   onBrowse,
   disabled,
-  utility,
+  trailing,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onBrowse: () => void;
   disabled?: boolean;
-  utility?: React.ReactNode;
+  trailing?: React.ReactNode;
 }) {
   return (
     <div className='shell-header__row'>
@@ -31,7 +31,7 @@ function PathRow({
         />
       </div>
       <Button size='sm' onClick={onBrowse} disabled={disabled}>Browse</Button>
-      {utility}
+      {trailing}
     </div>
   );
 }
@@ -71,7 +71,7 @@ export function WorkspaceHeader({
           onChange={setOutputDir}
           onBrowse={() => { void browseOutput(); }}
           disabled={running}
-          utility={(
+          trailing={(
             <button
               type='button'
               className='shell-header__utility'
@@ -88,3 +88,4 @@ export function WorkspaceHeader({
     </section>
   );
 }
+

@@ -13,6 +13,15 @@ function detailLine(selectedCount: number) {
   return selectedCount > 0 ? `${selectedCount} selected | ready to start.` : 'Queue idle | choose folders to begin.';
 }
 
+function resourceLine(stats: ResourceStats) {
+  return [
+    `CPU ${stats.cpu_pct}%`,
+    `RAM ${stats.ram_used_gb.toFixed(1)}/${stats.ram_total_gb.toFixed(1)} GB`,
+    `GPU ${stats.gpu_mem_used_gb.toFixed(1)}/${stats.gpu_mem_total_gb.toFixed(1)} GB`,
+    `${stats.disk_free_gb.toFixed(0)} GB free`,
+  ].join(' | ');
+}
+
 export function BottomActionBar({
   running,
   status,
@@ -60,9 +69,12 @@ export function BottomActionBar({
           </div>
         </div>
 
-        <button type='button' className='shell-action__link' onClick={() => { void onOpenOutput(); }}>
-          Open output folder
-        </button>
+        <div className='shell-action__meta'>
+          <div className='shell-action__stats'>{resourceLine(stats)}</div>
+          <button type='button' className='shell-action__link' onClick={() => { void onOpenOutput(); }}>
+            Open output folder
+          </button>
+        </div>
       </div>
     </footer>
   );
