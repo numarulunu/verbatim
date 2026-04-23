@@ -438,7 +438,7 @@ body {
 .shell-rail__top {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 16px;
   border-bottom: 1px solid var(--shell-border);
 }
@@ -446,9 +446,13 @@ body {
 .shell-rail__body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 16px;
   overflow: auto;
+}
+
+.shell-rail__preset {
+  width: 100%;
 }
 
 .shell-card {
@@ -459,6 +463,15 @@ body {
   border: 1px solid var(--shell-border);
   border-radius: 8px;
   background: rgba(34, 34, 34, 0.92);
+}
+
+.shell-card--impact {
+  gap: 12px;
+}
+
+.shell-card--section {
+  gap: 12px;
+  background: rgba(28, 28, 29, 0.92);
 }
 
 .shell-card__head {
@@ -487,6 +500,32 @@ body {
 .shell-card__stats strong {
   font-size: 14px;
   color: #f1f1f1;
+}
+
+.shell-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shell-section__eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8d8d8d;
+}
+
+.shell-section__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f1f1;
+}
+
+.shell-section__detail {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #8f8f8f;
 }
 
 .shell-form-block {
@@ -649,8 +688,44 @@ body {
   cursor: pointer;
 }
 
+.shell-rail__tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.shell-rail__tool-link {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #9f9f9f;
+  font-size: 12px;
+  line-height: 1.5;
+  justify-content: flex-start;
+  background: transparent;
+}
+
+.shell-rail__tool-link:hover:not(:disabled) {
+  color: #f1f1f1;
+  background: transparent;
+}
+
+.shell-rail__tool-link:disabled {
+  color: #6f6f6f;
+}
+
 .shell-modal-body {
   height: 68vh;
   min-height: 0;
+}
+
+.shell-modal-surface {
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  background: rgba(19, 19, 19, 0.82);
 }
 

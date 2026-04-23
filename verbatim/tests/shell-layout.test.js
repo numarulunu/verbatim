@@ -153,7 +153,7 @@ test('App uses the single-shell components instead of tabbed primary views', () 
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'src', 'App.tsx'), 'utf8');
   const settingsRailPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'SettingsRail.tsx');
   const workspaceHeaderPath = path.join(__dirname, '..', 'renderer', 'src', 'components', 'shell', 'WorkspaceHeader.tsx');
-  const { sourceFile: settingsRailSourceFile } = parseTsxFile(settingsRailPath);
+  const { source: settingsRailSource, sourceFile: settingsRailSourceFile } = parseTsxFile(settingsRailPath);
   const { source: workspaceHeaderSource } = parseTsxFile(workspaceHeaderPath);
   const settingsRailJsx = getReturnedJsxTree(settingsRailSourceFile, 'SettingsRail');
 
@@ -170,6 +170,12 @@ test('App uses the single-shell components instead of tabbed primary views', () 
 
   assert.match(source, /<TitleBar\s*\/>[\s\S]*<WorkspaceHeader[\s\S]*<main className='shell-main'>/);
   assert.match(source, /<BottomActionBar[\s\S]*<RegistryPanel[\s\S]*<RedoPanel/);
+  assert.match(settingsRailSource, /<Select value='custom'/);
+  assert.match(settingsRailSource, /shell-card/);
+  assert.match(settingsRailSource, /shell-rail__tools/);
+  assert.match(settingsRailSource, /onOpenRegistry/);
+  assert.match(settingsRailSource, /onOpenRedo/);
+  assert.match(settingsRailSource, /onOpenSettings/);
 
   const select = findJsxElement(settingsRailJsx, 'Select', (opening) => {
     const valueAttr = getJsxAttribute(opening.attributes.properties, 'value');
