@@ -177,7 +177,7 @@ CLAUDE_CLI_TIMEOUT_S = 120
 # Stage 10 — Corpus & redo mode
 # ---------------------------------------------------------------------------
 
-PIPELINE_VERSION        = "1.0.0"
+PIPELINE_VERSION        = "1.0.1"
 REDO_THRESHOLD_SESSIONS = 3      # --threshold default for `run.py --redo`
 REDO_CONFIDENCE_FLOOR   = 0.70   # --confidence-below default
 MIN_FREE_DISK_GB        = 400    # preflight check in run.py

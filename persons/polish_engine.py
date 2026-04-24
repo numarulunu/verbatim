@@ -166,7 +166,7 @@ def polish_chunk_cli(chunk: list[dict], language: str, glossary: dict) -> list[d
     parsed = _extract_json(result.stdout)
     if parsed is None or not validate_chunk(chunk, parsed):
         return [dict(s, polished=False) for s in chunk]
-    return [dict(p, polished=True) for p in parsed]
+    return _merge_polished_segments(chunk, parsed)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ async def polish_chunk_api(
     parsed = _extract_json(text)
     if parsed is None or not validate_chunk(chunk, parsed):
         return [dict(s, polished=False) for s in chunk]
-    return [dict(p, polished=True) for p in parsed]
+    return _merge_polished_segments(chunk, parsed)
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +316,17 @@ def validate_chunk(original: list[dict], polished: list[dict]) -> bool:
             log.warning("polish speaker_id drift on segment start=%.3f", o.get("start"))
             return False
     return True
+
+
+def _merge_polished_segments(original: list[dict], polished: list[dict]) -> list[dict]:
+    """Copy original segments and apply only trusted polish output fields."""
+    out: list[dict] = []
+    for o, p in zip(original, polished):
+        next_seg = dict(o)
+        next_seg["text"] = str(p.get("text", o.get("text", "")))
+        next_seg["polished"] = True
+        out.append(next_seg)
+    return out
 
 
 def _extract_json(text: str) -> list[dict] | None:

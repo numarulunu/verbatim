@@ -543,3 +543,142 @@ Full report: `~/Desktop/Claude/skills-archive/smac/runs/2026-04-23-how-best-shou
 - **Problem:** No `engines`, no `.nvmrc`, no `.npmrc engine-strict`. docs/packaging.md:31 says "Node 20+" in prose only. Caret on `electron ^41.0.0` floats Chromium majors — same app version could ship from Electron 41 or 42 on two dev boxes.
 - **Proposed fix:** Add `"engines": { "node": ">=20.11" }`, drop `.nvmrc` at repo root, pin electron + electron-builder to exact versions.
 - **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-23-how-best-should-i-optimize.md`
+
+## From SMAC 2026-04-24 (default optimization audit)
+
+Full report: `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Successful polish drops original segment metadata
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** LOW | **Confidence:** 95% | **Verified:** CONFIRMED
+- **Evidence:** persons/polish_engine.py:169
+- **Problem:** Successful polish returns parsed LLM objects instead of copying originals, so speaker_name, speaker_role, speaker_confidence, matched_region, region, words, and cluster metadata can be lost before corpus/update stages.
+- **Proposed fix:** After validate_chunk, copy each original segment and replace only text plus polish audit fields; never replace the whole segment with the LLM response.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Engine lock acquire is check-then-write, so two daemons can both pass startup
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** MED | **Confidence:** 94% | **Verified:** CONFIRMED
+- **Evidence:** utils/engine_lock.py:104
+- **Problem:** `acquire()` reads existing JSON, then overwrites with a normal write. Two daemons can both see no live lock and both run writers against `_voiceprints` and corpus state.
+- **Proposed fix:** Replace the JSON check-then-write with an OS file lock or atomic create with `O_CREAT|O_EXCL` plus a unique token, with stale-owner validation under the same primitive.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] file_complete failures normalize as success
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** LOW | **Confidence:** 93% | **Verified:** CONFIRMED
+- **Evidence:** verbatim/renderer/src/bridge/normalize.ts:491
+- **Problem:** The daemon reports failures through `stats.ok`, but renderer normalization defaults any missing `state: 'failed'` to success. Failed or cancelled file_complete events can overwrite prior failed progress as success.
+- **Proposed fix:** Normalize file_complete from explicit state first, then `stats.ok` when present; preserve stats and add tests for `stats.ok === false` and error-then-file_complete ordering.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] First-ever dual bootstrap can permanently swap teacher and student
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** MED | **Confidence:** 92% | **Verified:** CONFIRMED
+- **Evidence:** stage3_postprocess.py:77
+- **Problem:** When both participants are new, orphan cluster labels come from an unordered set, then the first popped label becomes teacher and the next becomes student with bootstrap confidence 1.0.
+- **Proposed fix:** Do not auto-bootstrap both missing roles from unordered orphan labels. Require manual confirmation or deterministic external mapping for dual-new sessions, with a regression test.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Diff-schema polish gates are implemented but not wired
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** MED | **Confidence:** 92% | **Verified:** CONFIRMED
+- **Evidence:** persons/polish_diff.py:32
+- **Problem:** Deterministic patch gates for word confidence, phonetic similarity, and glossary corroboration exist but production still accepts full-segment LLM rewrites.
+- **Proposed fix:** Switch polish_chunk_cli/api to request patch objects, pass glossary keys into `apply_patches`, then merge patched original segments instead of accepting rewritten segment objects.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Cancellation waits through whole threaded phase groups
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** MED | **Confidence:** 86% | **Verified:** CONFIRMED
+- **Evidence:** run.py:215
+- **Problem:** `_process_one` checks cancellation before long synchronous bundles, then runs groups like `_finalize` in one worker thread. Cancellation during those groups waits until the whole bundle returns.
+- **Proposed fix:** Split long worker bundles into per-phase awaits and call `cancellation.cancel_check()` between each phase; pass cancellation/timeout hooks into subprocess or model calls where possible.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Sung segments can fall back into speaking voice updates
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** LOW | **Confidence:** 84% | **Verified:** CONFIRMED
+- **Evidence:** stage3_postprocess.py:340
+- **Problem:** Sung segments are remerged before voice-library update, and the update fallback ignores `seg['region']`, so sung audio can be accumulated as speaking when matched_region is missing.
+- **Proposed fix:** In `update_voice_libraries`, skip `seg.get('sung')` or fall back to `seg.get('region')` before `speaking`; add a sung_low/sung_full regression test.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Collision detection ignores the same centroids used for matching
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** LOW | **Confidence:** 84% | **Verified:** CONFIRMED
+- **Evidence:** persons/matcher.py:150
+- **Problem:** Matching scans every `.npy` centroid and recent-buffer row, but collision detection compares only `universal.npy`, so collisions in speaking/sung/recent vectors can be missed.
+- **Proposed fix:** Extend collision sweeps to compare all matchable centroids with region names, at least same-region 1-D centroids plus recent rows, with shape validation before cosine.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Per-file await prevents CPU/GPU pipelining
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** HIGH | **Effort:** HIGH | **Confidence:** 88% | **Verified:** PARTIAL
+- **Evidence:** run.py:421
+- **Problem:** The normal driver awaits each file end-to-end. This serializes files, but verifier qualified that singleton model state makes staged overlap non-trivial.
+- **Proposed fix:** Refactor into a bounded staged queue only after isolating singleton model state. Keep GPU users behind one semaphore, but overlap CPU-only decode/VAD and non-GPU polish/IO across files.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Batch footer ignores batch_started total
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** MED | **Confidence:** 78% | **Verified:** CONFIRMED
+- **Evidence:** verbatim/renderer/src/components/shell/BottomActionBar.tsx:65
+- **Problem:** Footer progress divides by current UI selection, not daemon `batch_started.total`; redo and backend-filtered batches can show stale percentages or wrong totals.
+- **Proposed fix:** Store `activeBatchTotal` from normalized `batch_started` in `useBatchWorkspace` and feed it to `BottomActionBar`; handle redo/file_started paths not present in files.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Word re-attribution launches one embedding call per word
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** MED | **Confidence:** 84% | **Verified:** PARTIAL
+- **Evidence:** utils/word_reattribute.py:97
+- **Problem:** Every eligible spoken word window invokes the speaker embedder separately, creating many small model calls. Verifier qualified that sung, missing-word, and too-short windows are skipped.
+- **Proposed fix:** Batch eligible word windows per file, or restrict re-attribution to boundary/low-confidence words before embedding.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Missing or malformed file_index mutates file zero
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** MED | **Effort:** LOW | **Confidence:** 82% | **Verified:** PARTIAL
+- **Evidence:** verbatim/renderer/src/bridge/normalize.ts:445
+- **Problem:** Missing or non-finite per-file indexes default to 0, so malformed payloads update the first row. Verifier qualified negative/fractional finite values as related validation gaps.
+- **Proposed fix:** Require a non-negative integer `file_index`/`index` for per-file events; return null or route to a warning event when invalid, with tests for missing/negative/fractional indexes.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Cluster embedding time is reported as diarization
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** LOW | **Effort:** LOW | **Confidence:** 90% | **Verified:** CONFIRMED
+- **Evidence:** run.py:273
+- **Problem:** Cluster embedding runs inside the open diarization phase, so progress timings charge embedding/model work to diarization and hide the real cost center.
+- **Proposed fix:** Add a separate embedding phase or move this timing into identification so reporter semantics match the work being measured.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Voice libraries are loaded twice per finalize before any mutation
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** LOW | **Effort:** LOW | **Confidence:** 90% | **Verified:** PARTIAL
+- **Evidence:** stage3_postprocess.py:244
+- **Problem:** `handle_sung_segments` and `reattribute_spoken_words` can rebuild the same person_id-to-library map before mutation. Verifier qualified that duplicate load happens only when sung segments are present.
+- **Proposed fix:** Build one voice-library cache after identification and pass it into both sung handling and word re-attribution; invalidate only after `update_voice_libraries`.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
+
+### [NEW] Rejected command errors are emitted without the original command id
+- **Tool:** smac
+- **Source:** SMAC 2026-04-24
+- **Impact:** LOW | **Effort:** LOW | **Confidence:** 80% | **Verified:** PARTIAL
+- **Evidence:** engine_daemon.py:179
+- **Problem:** Valid JSON rejection paths emit `ErrorEvent` without preserving a command id, so renderer-side request filters cannot correlate the rejection. Truly invalid JSON cannot reliably preserve an id.
+- **Proposed fix:** Parse raw objects far enough to preserve `id` and `cmd` before validation; include id plus context on unknown_command and invalid_command_payload events when the raw payload was valid JSON.
+- **Full report:** `~/Desktop/Claude/skills-archive/smac/runs/2026-04-24-how-best-should-i-optimize.md`
