@@ -63,19 +63,4 @@ contextBridge.exposeInMainWorld('verbatim', {
   /** Persist settings to userData and return {ok: true}. Caller usually
    *  follows up with verbatim.restart() so the daemon picks them up. */
   saveSettings: (s) => ipcRenderer.invoke('verbatim:save-settings', s),
-
-  /** Subscribe to electron-updater lifecycle events. `kind` is one of
-   *  'checking' | 'available' | 'current' | 'downloading' | 'downloaded'
-   *  | 'error'. No events in dev mode. */
-  updateStatus: () => ipcRenderer.invoke('verbatim:update-status'),
-
-  onUpdateStatus: (cb) => {
-    const listener = (_evt, payload) => cb(payload);
-    ipcRenderer.on('verbatim:update-status', listener);
-    return () => ipcRenderer.removeListener('verbatim:update-status', listener);
-  },
-
-  /** Trigger auto-installer after an update has been downloaded. Explicit
-   *  user action: install happens immediately and the app relaunches. */
-  installUpdateNow: () => ipcRenderer.invoke('verbatim:install-update-now'),
 });

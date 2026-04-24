@@ -10,7 +10,6 @@ import {
   type StatusEnvelope,
 } from './normalize';
 import { createBatchPathState } from './batchPathState';
-import type { UpdateStatus } from '../types';
 
 const MISSING_BRIDGE_MESSAGE = 'Verbatim bridge unavailable. The preload script may have failed to initialize.';
 
@@ -37,9 +36,6 @@ function createFallbackApi() {
     openLogsFolder: (): Promise<{ ok: boolean; error: string | null; path?: string }> => Promise.reject(missingBridgeError()),
     getSettings: () => Promise.resolve(DEFAULT_RENDERER_SETTINGS),
     saveSettings: () => Promise.reject(missingBridgeError()),
-    updateStatus: (): Promise<UpdateStatus | null> => Promise.resolve(null),
-    onUpdateStatus: () => () => {},
-    installUpdateNow: (): Promise<{ ok: boolean; error: string | null }> => Promise.reject(missingBridgeError()),
   };
 }
 
@@ -170,18 +166,6 @@ export const verbatimClient = {
 
   saveSettings(settings: Partial<RendererSettings>) {
     return api.saveSettings(encodeSettings(settings) as Record<string, unknown>);
-  },
-
-  updateStatus(): Promise<UpdateStatus | null> {
-    return api.updateStatus();
-  },
-
-  onUpdateStatus(cb: (event: unknown) => void) {
-    return api.onUpdateStatus(cb);
-  },
-
-  installUpdateNow() {
-    return api.installUpdateNow();
   },
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "verbatim",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Local GUI for the Verbatim ASR pipeline — vocal-lesson transcription with per-person voiceprints",
   "main": "main.js",
   "author": "Ionuț Roșu",

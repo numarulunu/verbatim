@@ -104,15 +104,6 @@ export interface ResourceStats {
   disk_free_gb: number;
 }
 
-export type UpdateStatusKind = 'checking' | 'current' | 'available' | 'downloading' | 'downloaded' | 'error';
-
-export interface UpdateStatus {
-  kind: UpdateStatusKind;
-  version?: string;
-  message?: string;
-  percent?: number;
-}
-
 export interface RunOptions {
   whisper_model: 'tiny' | 'base' | 'small' | 'medium' | 'large' | 'large-v3-turbo';
   skip_isolation: boolean;

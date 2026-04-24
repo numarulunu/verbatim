@@ -18,7 +18,6 @@ const { defaultDataDir, resolveEngineCommand, resolveRendererTarget } = require(
 const fs = require('node:fs');
 const { shouldStartBackgroundServices } = require('./startup-policy.js');
 const { buildStatusEnvelope } = require('./status-envelope.js');
-const { createUpdateStatusState } = require('./update-status-state.js');
 const { normalizeUpdaterMessage } = require('./updater-message.js');
 const { runWindowControlAction } = require('./window-controls.js');
 const { createLogSink } = require('./log-sink.js');
@@ -40,7 +39,6 @@ function loadAutoUpdater() {
 let mainWindow = null;
 let engine = null;
 let logSink = null;
-const updateStatusState = createUpdateStatusState();
 
 function settingsFilePath() {
   return path.join(app.getPath('userData'), 'verbatim-settings.json');
@@ -273,7 +271,6 @@ function registerIpcHandlers() {
   ipcMain.handle('verbatim:status', () => {
     return buildStatusEnvelope(engine);
   });
-  ipcMain.handle('verbatim:update-status', () => updateStatusState.current());
   ipcMain.handle('verbatim:window-control', (_evt, action) => runWindowControlAction(mainWindow, action));
   ipcMain.handle('verbatim:restart', async () => {
     if (engine) await engine.stop();
@@ -295,18 +292,6 @@ function registerIpcHandlers() {
       shellOpenPath: (p) => shell.openPath(p),
       allowedRoots: [app.getPath('home')],
     });
-  });
-  ipcMain.handle('verbatim:install-update-now', () => {
-    // Explicit user-initiated install. electron-updater returns void; any
-    // error surfaces through the `error` event already relayed to the UI.
-    const autoUpdater = loadAutoUpdater();
-    if (!autoUpdater) return { ok: false, error: 'Updater not available' };
-    try {
-      autoUpdater.quitAndInstall(false, true);
-      return { ok: true, error: null };
-    } catch (err) {
-      return { ok: false, error: err && err.message ? err.message : 'Install failed' };
-    }
   });
   ipcMain.handle('verbatim:open-logs-folder', async () => {
     if (!logSink) return { ok: false, error: 'log sink not initialised' };
@@ -334,14 +319,9 @@ function registerIpcHandlers() {
 }
 
 /**
- * Wire electron-updater. No-op in dev (isPackaged=false) because the
- * updater refuses to run against an unsigned, unpackaged app and the
- * GitHub Releases endpoint has nothing to offer yet.
- *
- * Relays every lifecycle event to the renderer as
- * {channel: 'verbatim:update-status', kind, ...payload} so the UI can
- * surface "Update available — downloading" / "Update ready to install"
- * banners. Silent fallback if electron-updater isn't installed.
+ * Wire electron-updater using the built-in `checkForUpdatesAndNotify` flow:
+ * download in the background, show the native OS notification on completion,
+ * install on app quit. No custom UI.
  */
 function initAutoUpdater() {
   if (!app.isPackaged) {
@@ -353,29 +333,8 @@ function initAutoUpdater() {
     console.warn('[updater] electron-updater not installed; auto-update disabled');
     return;
   }
-  // Download new builds in the background, but DO NOT auto-install on quit
-  // until the installer is signed (SMAC Finding 6). Unsigned auto-install
-  // across a public GitHub Releases feed is a silent-RCE vector. Instead
-  // the renderer exposes a manual "Install now" action once the update is
-  // ready.
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.allowDowngrade = false;
   autoUpdater.logger = console;
-
-  const relay = (kind, payload = {}) => {
-    const next = updateStatusState.set({ kind, ...payload });
-    sendToRenderer('verbatim:update-status', next);
-  };
-
-  autoUpdater.on('checking-for-update',    () => relay('checking'));
-  autoUpdater.on('update-available',       (info) => relay('available', { version: info.version }));
-  autoUpdater.on('update-not-available',   () => relay('current'));
-  autoUpdater.on('error',                  (err) => relay('error', { message: normalizeUpdaterMessage(err) }));
-  autoUpdater.on('download-progress',      (p) => relay('downloading', {
-    percent: p.percent, bytes_per_second: p.bytesPerSecond,
-  }));
-  autoUpdater.on('update-downloaded',      (info) => relay('downloaded', { version: info.version }));
+  autoUpdater.on('error', (err) => console.warn('[updater] error:', normalizeUpdaterMessage(err)));
 
   autoUpdater.checkForUpdatesAndNotify().catch((err) => {
     console.warn('[updater] initial check failed:', err && err.message);

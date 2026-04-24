@@ -7,23 +7,16 @@ import { RegistryPanel } from './components/shell/RegistryPanel';
 import { RedoPanel } from './components/shell/RedoPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { Toasts } from './components/Toasts';
-import { UpdateBanner } from './components/UpdateBanner';
 import { verbatimClient } from './bridge/verbatimClient';
 import { useBatchWorkspace } from './hooks/useBatchWorkspace';
-import type { DaemonStatus, Toast, UpdateStatus } from './types';
-
-function shouldShowUpdateBanner(next: UpdateStatus | null) {
-  return Boolean(next && next.kind !== 'checking' && next.kind !== 'current');
-}
+import type { DaemonStatus, Toast } from './types';
 
 export default function App() {
   const [status, setStatus] = useState<DaemonStatus>('down');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [registryOpen, setRegistryOpen] = useState(false);
   const [redoOpen, setRedoOpen] = useState(false);
-  const [showBanner, setShowBanner] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
-  const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const pushToast = useCallback((toast: { kind: 'error' | 'warning' | 'info'; title: string; body?: string }) => {
@@ -45,19 +38,7 @@ export default function App() {
       }
     }).catch(() => {});
 
-    verbatimClient.updateStatus().then((next) => {
-      if (alive) {
-        setUpdateState(next ?? null);
-        setShowBanner(shouldShowUpdateBanner(next ?? null));
-      }
-    }).catch(() => {});
-
     const offStatus = verbatimClient.onStatus((next) => setStatus(next));
-    const offUpdate = verbatimClient.onUpdateStatus((payload: unknown) => {
-      const next = payload as UpdateStatus | null;
-      setUpdateState(next ?? null);
-      setShowBanner(shouldShowUpdateBanner(next));
-    });
     const offEvent = verbatimClient.onEvent((event) => {
       if (event.type === 'batch_complete') {
         pushToast({ kind: 'info', title: 'Batch complete', body: 'All queued files finished.' });
@@ -80,15 +61,12 @@ export default function App() {
     return () => {
       alive = false;
       offStatus();
-      offUpdate();
       offEvent();
     };
   }, [pushToast]);
 
   return (
     <div className='shell-app'>
-      {showBanner && updateState ? <UpdateBanner status={updateState} onDismiss={() => setShowBanner(false)} /> : null}
-
       <TitleBar />
 
       <main className='shell-main'>
