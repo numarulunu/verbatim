@@ -14,7 +14,8 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const path = require('node:path');
 const { EngineManager, STATUS } = require('./engine-manager.js');
-const { resolveEngineCommand, resolveRendererTarget } = require('./runtime-helpers.js');
+const { defaultDataDir, resolveEngineCommand, resolveRendererTarget } = require('./runtime-helpers.js');
+const fs = require('node:fs');
 const { shouldStartBackgroundServices } = require('./startup-policy.js');
 const { buildStatusEnvelope } = require('./status-envelope.js');
 const { createUpdateStatusState } = require('./update-status-state.js');
@@ -93,6 +94,24 @@ function saveSettings(settings) {
   saveSettingsStore(settingsFilePath(), next);
 }
 
+function resolveDataDir(settings) {
+  // Explicit user choice wins.
+  if (settings.data_dir && typeof settings.data_dir === 'string' && settings.data_dir.trim()) {
+    return settings.data_dir;
+  }
+  // Default: %LOCALAPPDATA%\Verbatim\data on Windows, equivalent on other
+  // platforms via app.getPath('appData'). Packaged builds install to
+  // Program Files, which is read-only for normal users — the daemon MUST
+  // write outside that tree. See runtime-helpers.js:defaultDataDir doc.
+  try {
+    const localAppData = process.env.LOCALAPPDATA || app.getPath('appData');
+    return defaultDataDir(localAppData);
+  } catch (_) {
+    // Last-resort fallback so a missing env var never breaks startup.
+    return path.join(app.getPath('appData'), 'Verbatim', 'data');
+  }
+}
+
 function daemonEnv() {
   const settings = loadSettings();
   const env = { ...process.env };
@@ -100,7 +119,11 @@ function daemonEnv() {
   const anth = readSecret(settings, 'anthropic_api_key', safeStorage);
   if (hf)   env.HF_TOKEN = hf;
   if (anth) env.ANTHROPIC_API_KEY = anth;
-  if (settings.data_dir) env.VERBATIM_ROOT = settings.data_dir;
+  const dataDir = resolveDataDir(settings);
+  // Create the tree so the daemon's utils/engine_lock.mkdir() works on
+  // fresh installs. Tolerate races (recursive=true) and platform quirks.
+  try { fs.mkdirSync(dataDir, { recursive: true }); } catch (_) { /* best-effort */ }
+  env.VERBATIM_ROOT = dataDir;
   return env;
 }
 
