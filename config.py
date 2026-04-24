@@ -190,6 +190,10 @@ RETRY_BUDGET    = 3
 RETRY_BACKOFF_S = (2, 8, 30)     # sleep intervals per attempt
 
 # Whisper hallucinations on silence — post-filter list.
+# NOTE: this list is currently dead (zero call sites). Phase 2 of the 2026-04-24
+# pipeline-quality plan replaces it with `suppress_tokens` at decode time
+# (faster-whisper's `suppress_tokens` parameter). Kept here for reference until
+# Phase 2 ships and a delete migration is run.
 KNOWN_HALLUCINATIONS = (
     "thank you for watching",
     "thanks for watching",
@@ -198,3 +202,49 @@ KNOWN_HALLUCINATIONS = (
     "like and subscribe",
     "mulțumesc pentru vizionare",
 )
+
+# ---------------------------------------------------------------------------
+# Phase 2 — decode-time hardening (CALIBRATION PENDING)
+# Set after Phase 1 emits `_calibration/recommended_thresholds.json`.
+# Each phase reads from these and falls back to no-op if `None`.
+# ---------------------------------------------------------------------------
+
+# faster-whisper `suppress_tokens` argument — list of token IDs to suppress
+# during sung-region decoding (eliminates "you/thank you/mm-hmm" hallucinations).
+# Built from the union of token IDs for the strings in KNOWN_HALLUCINATIONS plus
+# any per-corpus additions surfaced by Phase 1.
+SUPPRESS_TOKENS_FOR_SUNG: tuple[int, ...] | None = None
+
+# Drop default 2.4 → 1.8 to break repetition loops on low-entropy regions.
+COMPRESSION_RATIO_THRESHOLD: float | None = None
+
+# Below this RMS, force temperature=0.0 (greedy) — narrow true token distribution.
+RMS_GREEDY_THRESHOLD_DBFS: float | None = None
+
+# Raise no_speech_threshold this high when the segment is mostly non-speech per VAD.
+NO_SPEECH_THRESHOLD_HIGH: float | None = None
+
+# Trigger NO_SPEECH_THRESHOLD_HIGH when segment-level VAD coverage falls below
+# this ratio across at least VAD_LOW_COVERAGE_FRACTION of the segment duration.
+VAD_LOW_COVERAGE_RATIO: float | None = None
+VAD_LOW_COVERAGE_FRACTION: float | None = None
+
+# LUFS target for per-segment loudness normalization before Whisper.
+LUFS_TARGET: float | None = None  # spec: -20.0
+
+# ---------------------------------------------------------------------------
+# Phase 4 — polish hardening (CALIBRATION PENDING)
+# ---------------------------------------------------------------------------
+
+# Replaces POLISH_CHUNK_SIZE=200; spec recommends 25.
+POLISH_CHUNK_SIZE_NEW: int | None = None
+
+# Replaces avg_logprob gate. Faster-whisper per-word probability threshold —
+# polish only words below this confidence.
+WORD_CONFIDENCE_THRESHOLD: float | None = None
+
+# Phonetic-distance gate algorithm. Currently only "metaphone_ro_fold" is
+# implemented (jellyfish.metaphone after Romanian diacritic ASCII-fold).
+# Switching to alternatives (e.g., syllable-count + phoneme overlap) goes
+# through a config swap, not code edits.
+PHONETIC_DISTANCE_GATE: str | None = None

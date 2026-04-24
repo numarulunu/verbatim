@@ -153,6 +153,7 @@ export interface ToastEvent {
   title: string;
   body?: string;
   file?: string;
+  stderr_tail?: string;
 }
 
 export type NormalizedEvent =
@@ -579,6 +580,7 @@ export function normalizeDaemonEvent(raw: unknown): NormalizedEvent | null {
       title,
       body: pickBody(event),
       file: readString(event.file),
+      stderr_tail: readString(event.stderr_tail),
     };
   }
 

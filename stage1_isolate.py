@@ -84,7 +84,14 @@ def isolate_one(source: Path) -> Path:
         except OSError as exc:
             log.warning("could not remove secondary stem %s: %s", leftover.name, exc)
 
-    _apply_post_gate(target)
+    # Phase 2 of the 2026-04-24 pipeline-quality plan moved spectral gating
+    # from this global pre-VAD pass to a per-segment post-VAD step inside
+    # stage 2 (utils.audio_preprocess.adaptive_spectral_floor). The global
+    # gate dominated its noise-floor estimate with the loudest sung-region
+    # frames in the file, which silenced quiet teacher-coaching speech that
+    # sat between sustained notes. The per-segment replacement reads its
+    # noise floor from the bottom 5th-percentile of in-frame magnitudes and
+    # is bounded by a -55 dBFS hard ceiling.
     return target
 
 

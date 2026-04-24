@@ -16,7 +16,10 @@ export interface BatchWorkspaceController {
   scanSummary: { total: number; fresh: number; processed: number };
   completedCount: number;
   currentFile?: string;
-  elapsed: number;
+  // Seconds-since-batch-start is computed inside BottomActionBar from this
+  // field — hoisting the interval out of the hook means App.tsx no longer
+  // re-renders twice per second during a batch (SMAC 2026-04-23 Finding 15).
+  batchStartedAt: number | null;
   opts: RunOptions;
   setSortKey: (value: 'name' | 'duration' | 'size') => void;
   setOpts: (value: RunOptions) => void;
@@ -56,12 +59,10 @@ export function useBatchWorkspace({
   const [progress, setProgress] = useState<Record<string, FileProgress>>({});
   const [sortKey, setSortKey] = useState<'name' | 'duration' | 'size'>('name');
   const [batchStartedAt, setBatchStartedAt] = useState<number | null>(null);
-  const [elapsed, setElapsed] = useState(0);
   const [currentFile, setCurrentFile] = useState<string | undefined>();
   const [running, setRunning] = useState(false);
   const [opts, setOpts] = useState<RunOptions>(DEFAULT_OPTS);
 
-  const elapsedTimer = useRef<number | null>(null);
   const inputDirDirtyRef = useRef(false);
   const outputDirDirtyRef = useRef(false);
 
@@ -91,23 +92,8 @@ export function useBatchWorkspace({
   }, [settingsRevision]);
 
   useEffect(() => {
-    if (running && batchStartedAt) {
-      elapsedTimer.current = window.setInterval(() => {
-        setElapsed((Date.now() - batchStartedAt) / 1000);
-      }, 500);
-
-      return () => {
-        if (elapsedTimer.current) {
-          window.clearInterval(elapsedTimer.current);
-        }
-      };
-    }
-  }, [running, batchStartedAt]);
-
-  useEffect(() => {
     if (!running) {
       setBatchStartedAt(null);
-      setElapsed(0);
       setCurrentFile(undefined);
     }
   }, [running]);
@@ -123,7 +109,6 @@ export function useBatchWorkspace({
           break;
         case 'batch_started':
           setBatchStartedAt(Date.now());
-          setElapsed(0);
           setRunning(true);
           break;
         case 'file_started':
@@ -392,7 +377,7 @@ export function useBatchWorkspace({
     scanSummary,
     completedCount,
     currentFile,
-    elapsed,
+    batchStartedAt,
     opts,
     setSortKey,
     setOpts,

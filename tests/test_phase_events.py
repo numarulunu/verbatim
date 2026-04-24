@@ -46,6 +46,14 @@ def stub_stage2(monkeypatch):
 def stub_stage3(monkeypatch):
     mod = types.ModuleType("stage3_postprocess")
     mod.identify_speakers = MagicMock(return_value=([], {}))
+    # Phase 3 (2026-04-24 plan) inserted region annotation, sung-handler, and
+    # word-level re-attribution between identify_speakers and run_verification.
+    # Stub each as identity passthroughs so the orchestration test's golden
+    # phase sequence still matches.
+    mod.annotate_regions = MagicMock(side_effect=lambda segments, audio, sr: segments)
+    mod.split_sung_and_spoken = MagicMock(side_effect=lambda segments: (segments, []))
+    mod.handle_sung_segments = MagicMock(side_effect=lambda sung, audio, sr, l2p: sung)
+    mod.reattribute_spoken_words = MagicMock(side_effect=lambda spoken, audio, sr, l2p: spoken)
     mod.run_verification = MagicMock(return_value=[])
     mod.polish = MagicMock(return_value=[])
     mod.update_voice_libraries = MagicMock()

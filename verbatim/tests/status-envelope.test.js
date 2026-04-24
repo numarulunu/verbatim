@@ -26,3 +26,19 @@ test('buildStatusEnvelope falls back to a down envelope without engine state', (
     lastExit: null,
   });
 });
+
+test('buildStatusEnvelope passes stderr_tail through on lastExit', () => {
+  const envelope = buildStatusEnvelope({
+    status: 'crashed',
+    lastReady: null,
+    lastExit: {
+      code: 1,
+      signal: null,
+      message: 'engine failed to start',
+      stderr_tail: 'Traceback (most recent call last):\n  ImportError',
+    },
+  });
+  assert.equal(envelope.lastExit.code, 1);
+  assert.equal(envelope.lastExit.message, 'engine failed to start');
+  assert.match(envelope.lastExit.stderr_tail, /ImportError/);
+});

@@ -1,7 +1,7 @@
 # Verbatim — packaging guide
 
-The build produces a single **`Verbatim Setup X.Y.Z.exe`** (per-machine
-NSIS installer, lands in `C:\Program Files\Verbatim\`) that bundles:
+The build produces a single **`Verbatim-Transcribe-Setup-X.Y.Z.exe`** (per-machine
+NSIS installer, lands in `C:\Program Files\Verbatim Transcribe\`) that bundles:
 
 - The PyInstaller-frozen Python daemon (`verbatim-engine.exe` +
   `_internal/` with torch, CUDA DLLs, pyannote, whisperx, audio-
@@ -29,6 +29,7 @@ downloads models; subsequent runs are fully offline.
   `python run.py` on a real file succeeded).
 - `pip install pyinstaller` inside the venv.
 - Node 20+ with `npm install` run in `verbatim/`.
+- Renderer deps installed in `verbatim/renderer/` (`npm --prefix renderer install`).
 - Internet access during the first build (fetches FFmpeg).
 
 ## Full build — one command
@@ -40,13 +41,14 @@ npm run build-all-win
 
 That runs, in order:
 
+0. `renderer:build` - builds the React renderer into `verbatim/renderer/dist/`.
 1. `fetch-ffmpeg` — downloads gyan.dev's essentials build into
    `build/ffmpeg/bin/` (cached; no-op on subsequent builds).
 2. `build-engine` — PyInstaller freezes `engine_daemon.py` into
    `verbatim/engine/verbatim-engine.exe` + `_internal/`.
    ffmpeg.exe + ffprobe.exe are bundled alongside.
 3. `build-win` — electron-builder produces
-   `verbatim/dist/Verbatim Setup X.Y.Z.exe` +
+   `verbatim/dist/Verbatim-Transcribe-Setup-X.Y.Z.exe` +
    `latest.yml` for auto-update.
 
 Total build time: ~10–15 min on the first run (FFmpeg download +
@@ -55,6 +57,25 @@ builds with warm caches: ~3–5 min.
 
 Output installer size: expect **2–4 GB**. The torch + CUDA DLLs are
 the bulk; audio-separator's onnxruntime adds ~200 MB.
+
+## Renderer development loop
+
+Use the renderer workspace directly for UI development:
+
+```bash
+cd verbatim
+npm run renderer:dev
+```
+
+Then launch Electron against the Vite server:
+
+```powershell
+cd verbatim
+$env:VERBATIM_RENDERER_URL='http://127.0.0.1:5173'
+npm start
+```
+
+Without `VERBATIM_RENDERER_URL`, Electron loads the built renderer from `renderer/dist/` in development and from `resources/app.asar/renderer/dist/index.html` when packaged.
 
 ## Auto-update release flow
 
@@ -92,9 +113,9 @@ startup and downloads/installs updates in the background.
 
 ## End-user install experience
 
-1. User runs `Verbatim Setup X.Y.Z.exe`
+1. User runs `Verbatim-Transcribe-Setup-X.Y.Z.exe`
 2. Windows UAC prompt (per-machine install writes to Program Files)
-3. Installer offers install location (default `C:\Program Files\Verbatim\`)
+3. Installer offers install location (default `C:\Program Files\Verbatim Transcribe\`)
 4. Desktop + Start Menu shortcuts created, app launches
 5. First launch: status bar shows `daemon: spawning → ready`
 6. User clicks gear → Settings → enters `HF_TOKEN` (required for

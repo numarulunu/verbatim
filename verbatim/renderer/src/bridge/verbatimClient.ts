@@ -34,10 +34,12 @@ function createFallbackApi() {
     restart: () => Promise.reject(missingBridgeError()),
     pickFolder: (): Promise<string | null> => Promise.resolve(null),
     openPath: (): Promise<{ ok: boolean; error: string | null }> => Promise.reject(missingBridgeError()),
+    openLogsFolder: (): Promise<{ ok: boolean; error: string | null; path?: string }> => Promise.reject(missingBridgeError()),
     getSettings: () => Promise.resolve(DEFAULT_RENDERER_SETTINGS),
     saveSettings: () => Promise.reject(missingBridgeError()),
     updateStatus: (): Promise<UpdateStatus | null> => Promise.resolve(null),
     onUpdateStatus: () => () => {},
+    installUpdateNow: (): Promise<{ ok: boolean; error: string | null }> => Promise.reject(missingBridgeError()),
   };
 }
 
@@ -158,6 +160,10 @@ export const verbatimClient = {
     return api.openPath(targetPath);
   },
 
+  openLogsFolder() {
+    return api.openLogsFolder();
+  },
+
   getSettings() {
     return api.getSettings().then(normalizeSettings);
   },
@@ -172,6 +178,10 @@ export const verbatimClient = {
 
   onUpdateStatus(cb: (event: unknown) => void) {
     return api.onUpdateStatus(cb);
+  },
+
+  installUpdateNow() {
+    return api.installUpdateNow();
   },
 };
 

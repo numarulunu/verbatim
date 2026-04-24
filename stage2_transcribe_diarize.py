@@ -25,13 +25,20 @@ from typing import TYPE_CHECKING, Any
 
 from config import (
     ALIGN_MODELS,
+    COMPRESSION_RATIO_THRESHOLD,
     CONDITION_ON_PREVIOUS_TEXT,
     DECODE_SAMPLE_RATE,
     DIARIZATION_MODEL,
     HF_TOKEN,
     INITIAL_PROMPTS,
+    LUFS_TARGET,
     MAX_SPEAKERS,
     MIN_SPEAKERS,
+    NO_SPEECH_THRESHOLD_HIGH,
+    RMS_GREEDY_THRESHOLD_DBFS,
+    SUPPRESS_TOKENS_FOR_SUNG,
+    VAD_LOW_COVERAGE_FRACTION,
+    VAD_LOW_COVERAGE_RATIO,
     WHISPER_BATCH_SIZE,
     WHISPER_COMPUTE_TYPE,
     WHISPER_DEVICE,
@@ -161,9 +168,48 @@ def transcribe(
     When supplied, faster-whisper only decodes inside those spans. When None,
     whisper handles the full audio (silero pre-filter is strongly preferred
     but not mandatory at this layer).
+
+    Phase 2 hardening (active only when the corresponding config keys are
+    non-None — i.e., after Phase 1 calibration commits values):
+      - File-level LUFS normalization to LUFS_TARGET (utils.audio_preprocess).
+      - SUPPRESS_TOKENS_FOR_SUNG passed to faster-whisper (suppresses the
+        "you / thank you / mm-hmm" hallucination token set).
+      - COMPRESSION_RATIO_THRESHOLD (default 2.4 → 1.8 per spec) breaks
+        repetition loops earlier.
+      - word_timestamps=True ALWAYS (Phase 4 word-confidence gate needs
+        per-word probability; ~5-10% extra decode cost).
+      - Per-segment metadata captured for downstream consumers: rms_dbfs,
+        vad_coverage_ratio, words[].
+
+    DEFERRED to a future phase: per-segment dynamic temperature ramp +
+    per-segment no_speech_threshold tuning. faster-whisper's
+    BatchedInferencePipeline.transcribe() applies these as file-level args
+    only; making them per-segment requires either (a) one transcribe() call
+    per segment (throughput collapse) or (b) a CTranslate2-internals patch.
+    The Phase 1 calibration captures rms_dbfs + vad_coverage_ratio per
+    segment regardless, so the calibration data remains valid for whichever
+    of those two paths a later phase picks.
     """
+    from utils.audio_preprocess import (
+        adaptive_spectral_floor,
+        normalize_lufs,
+        rms_dbfs,
+        vad_coverage_ratio,
+    )
+
     pipe = load_whisper()
     prompt = INITIAL_PROMPTS.get(language, "")
+
+    # Replaces the global stage1 spectral_gate that dominated its noise-floor
+    # estimate with the loudest sung frames in the file. adaptive_spectral_floor
+    # estimates the floor per-frame from the bottom 5th-percentile of in-frame
+    # magnitudes and is bounded by a -55 dBFS hard ceiling.
+    audio = adaptive_spectral_floor(audio, sr=DECODE_SAMPLE_RATE)
+
+    # File-level LUFS normalization. No-op until Phase 1 commits LUFS_TARGET.
+    if LUFS_TARGET is not None:
+        audio = normalize_lufs(audio, sr=DECODE_SAMPLE_RATE, target_lufs=LUFS_TARGET)
+
     # faster-whisper 1.1.x expects clip_timestamps as a list of dicts with
     # `start` / `end` keys carrying SAMPLE indices (ints), not seconds. Silero
     # returns seconds when return_seconds=True, so convert at the boundary.
@@ -176,23 +222,48 @@ def transcribe(
         if vad_timestamps
         else None
     )
-    segments_iter, info = pipe.transcribe(
-        audio,
+
+    transcribe_kwargs = dict(
         language=language,
         batch_size=WHISPER_BATCH_SIZE,
         initial_prompt=prompt,
         condition_on_previous_text=CONDITION_ON_PREVIOUS_TEXT,
-        word_timestamps=False,   # alignment happens in Phase 6 via wav2vec2
+        word_timestamps=True,    # Phase 2 prerequisite for Phase 4 word-confidence gate
         clip_timestamps=clip_spans,
     )
+    if SUPPRESS_TOKENS_FOR_SUNG is not None:
+        transcribe_kwargs["suppress_tokens"] = list(SUPPRESS_TOKENS_FOR_SUNG)
+    if COMPRESSION_RATIO_THRESHOLD is not None:
+        transcribe_kwargs["compression_ratio_threshold"] = COMPRESSION_RATIO_THRESHOLD
+
+    segments_iter, info = pipe.transcribe(audio, **transcribe_kwargs)
+
     segments = []
     for s in segments_iter:
+        seg_start, seg_end = float(s.start), float(s.end)
+        # Per-segment metadata for the decode-time hardening + Phase 4 polish gates.
+        seg_audio = audio[int(seg_start * DECODE_SAMPLE_RATE):int(seg_end * DECODE_SAMPLE_RATE)]
+        seg_rms = rms_dbfs(seg_audio)
+        seg_vad_coverage = vad_coverage_ratio(seg_start, seg_end, vad_timestamps)
+        # Per-word output (faster-whisper exposes when word_timestamps=True).
+        words = []
+        if getattr(s, "words", None):
+            for w in s.words:
+                words.append({
+                    "start": float(w.start),
+                    "end": float(w.end),
+                    "word": w.word,
+                    "probability": float(w.probability) if w.probability is not None else None,
+                })
         segments.append({
-            "start": float(s.start),
-            "end": float(s.end),
+            "start": seg_start,
+            "end": seg_end,
             "text": s.text.strip(),
             "avg_logprob": float(s.avg_logprob) if s.avg_logprob is not None else None,
             "no_speech_prob": float(s.no_speech_prob) if s.no_speech_prob is not None else None,
+            "rms_dbfs": seg_rms,
+            "vad_coverage_ratio": seg_vad_coverage,
+            "words": words,
         })
     log.info("whisper produced %d segments for language=%s", len(segments), language)
     return {"segments": segments, "language": info.language}

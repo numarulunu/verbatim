@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Key, Folder, Sliders, Wrench, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { Key, Folder, Sliders, Wrench, RefreshCw, Eye, EyeOff, FileText } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
@@ -138,6 +138,25 @@ export function SettingsModal({ open, onClose, onSaved, pushToast }: Props) {
     }
   };
 
+  const openLogs = async () => {
+    try {
+      const result = await verbatimClient.openLogsFolder();
+      if (!result.ok) {
+        pushToast({
+          kind: 'warning',
+          title: 'Could not open logs folder',
+          body: result.error ?? 'Unknown error.',
+        });
+      }
+    } catch (error) {
+      pushToast({
+        kind: 'error',
+        title: 'Logs folder unavailable',
+        body: error instanceof Error ? error.message : 'Bridge not ready.',
+      });
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -266,6 +285,19 @@ export function SettingsModal({ open, onClose, onSaved, pushToast }: Props) {
                   </div>
                   <Button variant="secondary" leftIcon={<RefreshCw size={12} />} onClick={restart}>
                     Restart
+                  </Button>
+                </div>
+              </div>
+              <div className="pt-2 border-t divider">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <div className="text-sm text-ink-100">Open logs folder</div>
+                    <div className="text-xs text-ink-400 mt-0.5">
+                      Main-process + daemon stderr logs. Attach when reporting bugs.
+                    </div>
+                  </div>
+                  <Button variant="secondary" leftIcon={<FileText size={12} />} onClick={openLogs}>
+                    Open
                   </Button>
                 </div>
               </div>

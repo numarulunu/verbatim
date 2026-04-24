@@ -12,10 +12,12 @@ export interface VerbatimPreloadApi {
   restart(): Promise<{ ok: true }>;
   pickFolder(defaultPath?: string): Promise<string | null>;
   openPath(targetPath: string): Promise<{ ok: boolean; error: string | null }>;
+  openLogsFolder(): Promise<{ ok: boolean; error: string | null; path?: string }>;
   getSettings(): Promise<Partial<RendererSettings> | Record<string, unknown>>;
   saveSettings(settings: Record<string, unknown>): Promise<{ ok: true }>;
   updateStatus(): Promise<UpdateStatus | null>;
   onUpdateStatus(cb: (event: unknown) => void): () => void;
+  installUpdateNow(): Promise<{ ok: boolean; error: string | null }>;
 }
 
 declare global {

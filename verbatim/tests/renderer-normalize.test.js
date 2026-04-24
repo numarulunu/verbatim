@@ -321,6 +321,7 @@ test('normalizeDaemonEvent preserves file context on error events', () => {
       title: 'decoder failed',
       body: 'C:/clips/a.wav',
       file: 'C:/clips/a.wav',
+      stderr_tail: undefined,
     },
   );
 });

@@ -15,7 +15,7 @@ function SectionHead({ eyebrow, title, detail }: { eyebrow: string; title: strin
   );
 }
 
-function MetricBar({ label, value, tone, detail }: { label: string; value: string; tone: string; detail: string }) {
+function MetricBar({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
     <div className='shell-meter'>
       <div className='shell-meter__head'>
@@ -25,7 +25,26 @@ function MetricBar({ label, value, tone, detail }: { label: string; value: strin
       <div className='shell-meter__track'>
         <div className={['shell-meter__fill', tone].join(' ')} />
       </div>
-      <div className='shell-meter__detail'>{detail}</div>
+    </div>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className='shell-impact__hero'>
+      <span className='shell-impact__hero-label'>{label}</span>
+      <div className='shell-impact__hero-main'>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function ImpactChip({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className='shell-impact__chip'>
+      <span className='shell-impact__chip-label'>{label}</span>
+      <span className={accent ? 'shell-impact__chip-value shell-impact__chip-value--accent' : 'shell-impact__chip-value'}>{value}</span>
     </div>
   );
 }
@@ -51,6 +70,8 @@ export function SettingsRail({
 }) {
   const selectionRatio = scanSummary.fresh > 0 ? Math.round((selectedCount / scanSummary.fresh) * 100) : 0;
   const polishLabel = opts.polish === 'claude' ? 'Claude' : opts.polish === 'cli' ? 'CLI' : 'Off';
+  const languageLabel = opts.language === 'auto' ? 'Auto' : opts.language.toUpperCase();
+  const diarizationLabel = opts.skip_diarization ? 'Reduced' : 'Full';
 
   return (
     <aside className='shell-rail'>
@@ -71,28 +92,24 @@ export function SettingsRail({
             <span className='text-lg font-semibold text-ink-50'>{scanSummary.total} scanned</span>
           </div>
 
-          <div className='shell-card__stats'>
-            <div>
-              <span className='shell-kicker'>Selected</span>
-              <strong>{selectedCount}</strong>
-            </div>
-            <div>
-              <span className='shell-kicker'>Fresh</span>
-              <strong>{scanSummary.fresh}</strong>
-            </div>
-            <div>
-              <span className='shell-kicker'>Processed</span>
-              <strong>{scanSummary.processed}</strong>
-            </div>
-            <div>
-              <span className='shell-kicker'>Polish</span>
-              <strong>{polishLabel}</strong>
-            </div>
+          <div className='shell-impact__heroes'>
+            <HeroStat label='Selected' value={`${selectedCount}`} />
+            <HeroStat label='Fresh' value={`${scanSummary.fresh}`} />
+            <HeroStat label='Processed' value={`${scanSummary.processed}`} />
           </div>
 
-          <MetricBar label='Selection coverage' value={`${selectionRatio}%`} tone='tone-accent' detail='Focus the next run on fresh files only.' />
-          <MetricBar label='Speaker detail' value={opts.skip_diarization ? 'Reduced' : 'Full'} tone='tone-warn' detail='Diarization keeps speakers separated in the transcript.' />
-          <MetricBar label='Cleanup pass' value={polishLabel} tone='tone-muted' detail='CLI is local. Claude is slower but can polish phrasing.' />
+          <div className='shell-impact__meters'>
+            <MetricBar label='Selection coverage' value={`${selectionRatio}%`} tone='tone-accent' />
+            <MetricBar label='Speaker detail' value={diarizationLabel} tone='tone-warn' />
+            <MetricBar label='Cleanup pass' value={polishLabel} tone='tone-muted' />
+          </div>
+
+          <div className='shell-impact__chips'>
+            <ImpactChip label='Load' value={selectedCount > 0 ? 'Queued' : 'Idle'} accent />
+            <ImpactChip label='Model' value={opts.whisper_model} />
+            <ImpactChip label='Language' value={languageLabel} />
+            <ImpactChip label='Polish' value={polishLabel} />
+          </div>
         </div>
       </div>
 

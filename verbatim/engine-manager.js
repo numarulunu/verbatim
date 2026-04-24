@@ -29,6 +29,8 @@ const STATUS = Object.freeze({
   CRASHED: 'crashed',
 });
 
+const STDERR_TAIL_BYTES = 4096;
+
 class EngineManager {
   /**
    * @param {object} opts
@@ -61,6 +63,32 @@ class EngineManager {
     this._exitResolve = null;
     this._lastReady = null; // cached ready event for new subscribers
     this._lastExit = null;
+    this._stderrBuf = [];       // Array<Buffer> — rolling tail of daemon stderr
+    this._stderrBufBytes = 0;   // running total across _stderrBuf
+  }
+
+  /**
+   * Last ~STDERR_TAIL_BYTES of daemon stderr as utf-8 text. Empty string if
+   * the daemon hasn't written any stderr yet or hasn't been spawned.
+   */
+  get stderrTail() {
+    if (this._stderrBufBytes === 0) return '';
+    return Buffer.concat(this._stderrBuf, this._stderrBufBytes).toString('utf8');
+  }
+
+  /**
+   * Reject the in-flight ready promise exactly once. Nulls both resolve and
+   * reject handles so a subsequent exit/error/timeout does not re-reject.
+   * (Finding 18: double-reject on a Promise is a no-op today but becomes a
+   * crash source if _readyPromise is ever wired into a one-shot deferred or
+   * an unhandledRejection logger.)
+   */
+  _rejectReady(err) {
+    if (!this._readyReject) return;
+    const reject = this._readyReject;
+    this._readyResolve = null;
+    this._readyReject = null;
+    reject(err);
   }
 
   get status() {
@@ -103,6 +131,8 @@ class EngineManager {
       );
     }
     this._setStatus(STATUS.SPAWNING);
+    this._stderrBuf = [];
+    this._stderrBufBytes = 0;
 
     this._readyPromise = new Promise((resolve, reject) => {
       this._readyResolve = resolve;
@@ -121,7 +151,7 @@ class EngineManager {
       });
     } catch (err) {
       this._setStatus(STATUS.CRASHED);
-      this._readyReject(err);
+      this._rejectReady(err);
       return this._readyPromise;
     }
     this._child = child;
@@ -130,35 +160,68 @@ class EngineManager {
     const rl = readline.createInterface({ input: child.stdout });
     rl.on('line', (line) => this._onStdoutLine(line));
 
-    // Drain stderr — daemon logs there; callers can capture separately if
-    // desired. We just avoid the pipe filling.
-    child.stderr.on('data', () => {});
+    // Buffer the last STDERR_TAIL_BYTES of daemon stderr so we can surface
+    // Python tracebacks (CUDA OOM, HF auth, etc.) on crash. Also forward the
+    // raw chunk to an optional sink so packaged builds keep a full log.
+    const onStderr = this._opts.onStderr;
+    child.stderr.on('data', (chunk) => {
+      this._stderrBuf.push(chunk);
+      this._stderrBufBytes += chunk.length;
+      while (this._stderrBufBytes > STDERR_TAIL_BYTES && this._stderrBuf.length > 1) {
+        this._stderrBufBytes -= this._stderrBuf.shift().length;
+      }
+      if (this._stderrBufBytes > STDERR_TAIL_BYTES) {
+        const overflow = this._stderrBufBytes - STDERR_TAIL_BYTES;
+        this._stderrBuf[0] = this._stderrBuf[0].slice(overflow);
+        this._stderrBufBytes -= overflow;
+      }
+      if (typeof onStderr === 'function') {
+        try { onStderr(chunk); } catch (_) { /* sink errors must not kill the pipe */ }
+      }
+    });
 
     child.on('error', (err) => {
       if (this._status === STATUS.SPAWNING) {
-        this._readyReject(err);
+        this._rejectReady(err);
       }
-      this._lastExit = { code: null, signal: 'ERROR', message: err.message };
+      this._lastExit = {
+        code: null,
+        signal: 'ERROR',
+        message: err.message,
+        stderr_tail: this.stderrTail,
+      };
       this._setStatus(STATUS.CRASHED);
     });
 
     child.on('exit', (code, signal) => {
       const wasShuttingDown = this._status === STATUS.SHUTTING_DOWN;
-      this._lastExit = { code, signal };
+      // Merge instead of replace: the error handler (above) may have already
+      // stored { message } for this same death; raw { code, signal } would
+      // clobber it.
+      this._lastExit = {
+        ...(this._lastExit || {}),
+        code,
+        signal,
+        stderr_tail: this.stderrTail,
+      };
       this._setStatus(wasShuttingDown ? STATUS.DOWN : STATUS.CRASHED);
-      if (this._readyReject && this._status === STATUS.CRASHED) {
-        this._readyReject(new Error(
+      if (this._status === STATUS.CRASHED) {
+        this._rejectReady(new Error(
           `daemon exited before ready (code=${code}, signal=${signal})`,
         ));
       }
-      if (this._exitResolve) this._exitResolve({ code, signal });
+      if (this._exitResolve) { this._exitResolve({ code, signal }); this._exitResolve = null; }
+      // Finding 17: tear down stdio wrappers so late bytes after exit do not
+      // fire subscribers and the readline interface is eligible for GC.
+      try { rl.close(); } catch (_) { /* stream may already be closed */ }
+      try { child.stderr.removeAllListeners('data'); } catch (_) { /* ignore */ }
       this._child = null;
     });
 
     // Timeout failsafe.
     const readyTimer = setTimeout(() => {
-      if (this._status === STATUS.SPAWNING && this._readyReject) {
-        this._readyReject(new Error(
+      if (this._status === STATUS.SPAWNING) {
+        this._rejectReady(new Error(
           `daemon did not emit ready within ${this._opts.readyTimeoutMs}ms`,
         ));
         try { child.kill(); } catch (_) { /* ignore */ }

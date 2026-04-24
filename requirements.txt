@@ -25,9 +25,14 @@ librosa>=0.10
 pyworld>=0.3.4
 soundfile>=0.12
 numpy>=1.26,<2.0
+pyloudnorm>=0.1.1                # ITU-R BS.1770-4 loudness normalization (Phase 2 LUFS gate)
 
 # --- LLM polish ---
 anthropic>=0.40.0                # only when POLISH_ENGINE = "api"
+jellyfish>=0.11.2                # phonetic-distance gate for diff-schema polish (Phase 4)
+# spacy + ro_core_news_sm        # OPTIONAL — Phase 4 NER auto-reject in polish.
+                                  # Install separately when activating that gate:
+                                  #   pip install spacy && python -m spacy download ro_core_news_sm
 
 # --- QA / benchmarking ---
 jiwer>=3.0                       # WER / CER

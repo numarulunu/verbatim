@@ -6,6 +6,9 @@
   "author": "Ionuț Roșu",
   "license": "UNLICENSED",
   "private": true,
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "start": "node scripts/start.js",
     "renderer:dev": "npm --prefix renderer run dev",
@@ -15,15 +18,16 @@
     "fetch-ffmpeg": "cd .. && node scripts/fetch-ffmpeg.js",
     "build-engine": "cd .. && .venv\\Scripts\\python.exe -m PyInstaller --noconfirm --distpath verbatim build-engine.spec",
     "build": "npm run renderer:build && electron-builder --config build-config/electron-builder.yml",
-    "build-win": "npm run renderer:build && electron-builder --win --config build-config/electron-builder.yml",
-    "build-all-win": "npm run fetch-ffmpeg && npm run build-engine && npm run build-win",
+    "build-win:electron-only": "npm run renderer:build && electron-builder --win --config build-config/electron-builder.yml",
+    "build-win": "npm run fetch-ffmpeg && npm run build-engine && npm run build-win:electron-only",
+    "build-all-win": "npm run build-win",
     "publish-win": "npm run fetch-ffmpeg && npm run build-engine && npm run renderer:build && electron-builder --win --publish always --config build-config/electron-builder.yml"
   },
   "dependencies": {
-    "electron-updater": "^6.3.0"
+    "electron-updater": "6.8.3"
   },
   "devDependencies": {
-    "electron": "^41.0.0",
-    "electron-builder": "^26.0.0"
+    "electron": "41.2.1",
+    "electron-builder": "26.8.1"
   }
 }

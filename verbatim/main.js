@@ -11,8 +11,7 @@
  */
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
-const fs = require('node:fs');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const path = require('node:path');
 const { EngineManager, STATUS } = require('./engine-manager.js');
 const { resolveEngineCommand, resolveRendererTarget } = require('./runtime-helpers.js');
@@ -21,6 +20,10 @@ const { buildStatusEnvelope } = require('./status-envelope.js');
 const { createUpdateStatusState } = require('./update-status-state.js');
 const { normalizeUpdaterMessage } = require('./updater-message.js');
 const { runWindowControlAction } = require('./window-controls.js');
+const { createLogSink } = require('./log-sink.js');
+const { loadSettings: loadSettingsStore, saveSettings: saveSettingsStore } = require('./settings-store.js');
+const { openPathAction } = require('./open-path-handler.js');
+const { migratePlaintext, readSecret, encryptValue } = require('./secret-store.js');
 
 // electron-updater is an optional dependency at dev time (unused until
 // a packaged build hits an installed user's machine). Import lazily so
@@ -35,6 +38,7 @@ function loadAutoUpdater() {
 
 let mainWindow = null;
 let engine = null;
+let logSink = null;
 const updateStatusState = createUpdateStatusState();
 
 function settingsFilePath() {
@@ -42,27 +46,61 @@ function settingsFilePath() {
 }
 
 function loadSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
-  } catch (_) {
-    return {};
+  const result = loadSettingsStore(settingsFilePath());
+  return result.settings;
+}
+
+/**
+ * One-shot migration on boot: if the on-disk settings file still has
+ * plaintext tokens and safeStorage is available, encrypt + rewrite. No-op
+ * when nothing needs upgrading.
+ */
+function migrateSecretsOnBoot() {
+  const current = loadSettings();
+  const { settings: upgraded, changed } = migratePlaintext(current, safeStorage);
+  if (changed) {
+    try {
+      saveSettingsStore(settingsFilePath(), upgraded);
+      console.log('[settings] plaintext secrets migrated to safeStorage');
+    } catch (err) {
+      console.warn('[settings] secret migration failed:', err && err.message);
+    }
   }
 }
 
+/**
+ * Persist settings. Secret fields in the incoming payload are encrypted
+ * before writing; plaintext keys are dropped so callers can pass a mixed
+ * blob from the renderer without worrying about the on-disk shape.
+ */
 function saveSettings(settings) {
-  const p = settingsFilePath();
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  const tmp = p + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(settings || {}, null, 2));
-  fs.renameSync(tmp, p);
+  const next = { ...(settings || {}) };
+  if (typeof next.hf_token === 'string' && next.hf_token !== '') {
+    const enc = encryptValue(safeStorage, next.hf_token);
+    if (enc) { next.hf_token_encrypted = enc; delete next.hf_token; }
+  } else if (next.hf_token === '') {
+    // Explicit clear from the UI → drop both variants.
+    delete next.hf_token;
+    delete next.hf_token_encrypted;
+  }
+  if (typeof next.anthropic_api_key === 'string' && next.anthropic_api_key !== '') {
+    const enc = encryptValue(safeStorage, next.anthropic_api_key);
+    if (enc) { next.anthropic_api_key_encrypted = enc; delete next.anthropic_api_key; }
+  } else if (next.anthropic_api_key === '') {
+    delete next.anthropic_api_key;
+    delete next.anthropic_api_key_encrypted;
+  }
+  saveSettingsStore(settingsFilePath(), next);
 }
 
 function daemonEnv() {
   const settings = loadSettings();
   const env = { ...process.env };
-  if (settings.hf_token)          env.HF_TOKEN = settings.hf_token;
-  if (settings.anthropic_api_key) env.ANTHROPIC_API_KEY = settings.anthropic_api_key;
-  if (settings.data_dir)          env.VERBATIM_ROOT = settings.data_dir;
+  const hf   = readSecret(settings, 'hf_token', safeStorage);
+  const anth = readSecret(settings, 'anthropic_api_key', safeStorage);
+  if (hf)   env.HF_TOKEN = hf;
+  if (anth) env.ANTHROPIC_API_KEY = anth;
+  if (settings.data_dir) env.VERBATIM_ROOT = settings.data_dir;
   return env;
 }
 
@@ -70,8 +108,8 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1180,
-    minHeight: 760,
+    minWidth: 960,
+    minHeight: 640,
     title: 'Verbatim',
     backgroundColor: '#111111',
     frame: false,
@@ -109,6 +147,59 @@ async function createWindow() {
     mainWindow = null;
   });
 
+  // Navigation guards. A compromised renderer (XSS via a future preview, a
+  // bad paste, or a CDN-injected resource) could try to open external URLs
+  // or navigate the main window off file://. Preload privileges ride along
+  // with the origin, so keeping the renderer pinned to its entry point is
+  // non-negotiable. Route any user-initiated external link through
+  // shell.openExternal instead.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url && /^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => { /* best-effort */ });
+    }
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (evt, url) => {
+    try {
+      const next = new URL(url);
+      const current = new URL(mainWindow.webContents.getURL());
+      if (next.origin !== current.origin) {
+        evt.preventDefault();
+        if (next.protocol === 'http:' || next.protocol === 'https:') {
+          shell.openExternal(url).catch(() => { /* best-effort */ });
+        }
+      }
+    } catch (_) {
+      evt.preventDefault();
+    }
+  });
+
+  // Renderer crash recovery. Without these, an OOM or native-module fault in
+  // the renderer leaves a white window with no diagnostic and no recovery.
+  // Auto-reload once; escalate to a fatal-banner event on a second crash so
+  // we don't enter a reload loop.
+  let renderCrashCount = 0;
+  mainWindow.webContents.on('render-process-gone', (_evt, details) => {
+    renderCrashCount += 1;
+    console.error(
+      `[window] renderer gone: reason=${details.reason} exitCode=${details.exitCode} (crash #${renderCrashCount})`,
+    );
+    if (renderCrashCount <= 1 && mainWindow && !mainWindow.isDestroyed()) {
+      try { mainWindow.reload(); } catch (_) { /* ignore */ }
+    } else {
+      sendToRenderer('verbatim:event', {
+        type: 'error',
+        error_type: 'renderer_crash',
+        title: 'Renderer crashed repeatedly',
+        body: `reason=${details.reason} exitCode=${details.exitCode}`,
+        recoverable: false,
+      });
+    }
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[window] renderer unresponsive');
+  });
+
   return rendererLoaded;
 }
 
@@ -129,6 +220,9 @@ async function startEngine() {
     args,
     cwd,
     env: daemonEnv(),
+    onStderr: (chunk) => {
+      if (logSink) logSink.append('stderr', chunk.toString('utf8').replace(/\n$/, ''));
+    },
   });
   engine.onEvent((evt) => sendToRenderer('verbatim:event', evt));
   engine.onStatus(() => sendToRenderer('verbatim:status', buildStatusEnvelope(engine)));
@@ -142,6 +236,7 @@ async function startEngine() {
       error_type: 'daemon_crash',
       message: `engine failed to start: ${err.message}`,
       recoverable: false,
+      stderr_tail: engine && engine.stderrTail ? engine.stderrTail : '',
     });
   }
 }
@@ -170,13 +265,45 @@ function registerIpcHandlers() {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle('verbatim:open-path', async (_evt, targetPath) => {
-    if (typeof targetPath !== 'string' || !targetPath.trim()) {
-      throw new Error('Path is required');
-    }
-    const error = await shell.openPath(targetPath);
-    return { ok: error.length === 0, error: error || null };
+    // Confine reveals to the user's profile and reject executable file
+    // types. See open-path-handler.js for the full rationale.
+    return openPathAction({
+      targetPath,
+      shellOpenPath: (p) => shell.openPath(p),
+      allowedRoots: [app.getPath('home')],
+    });
   });
-  ipcMain.handle('verbatim:get-settings', () => loadSettings());
+  ipcMain.handle('verbatim:install-update-now', () => {
+    // Explicit user-initiated install. electron-updater returns void; any
+    // error surfaces through the `error` event already relayed to the UI.
+    const autoUpdater = loadAutoUpdater();
+    if (!autoUpdater) return { ok: false, error: 'Updater not available' };
+    try {
+      autoUpdater.quitAndInstall(false, true);
+      return { ok: true, error: null };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : 'Install failed' };
+    }
+  });
+  ipcMain.handle('verbatim:open-logs-folder', async () => {
+    if (!logSink) return { ok: false, error: 'log sink not initialised' };
+    const error = await shell.openPath(logSink.dir);
+    return { ok: error.length === 0, error: error || null, path: logSink.dir };
+  });
+  ipcMain.handle('verbatim:get-settings', () => {
+    // Decrypt secrets before handing them to the renderer so the Settings
+    // modal can populate its text fields. Plaintext only exists in RAM
+    // between this call and the next save.
+    const settings = loadSettings();
+    const out = { ...settings };
+    const hf   = readSecret(settings, 'hf_token', safeStorage);
+    const anth = readSecret(settings, 'anthropic_api_key', safeStorage);
+    if (hf)   out.hf_token = hf;
+    if (anth) out.anthropic_api_key = anth;
+    delete out.hf_token_encrypted;
+    delete out.anthropic_api_key_encrypted;
+    return out;
+  });
   ipcMain.handle('verbatim:save-settings', (_evt, settings) => {
     saveSettings(settings);
     return { ok: true };
@@ -203,8 +330,14 @@ function initAutoUpdater() {
     console.warn('[updater] electron-updater not installed; auto-update disabled');
     return;
   }
+  // Download new builds in the background, but DO NOT auto-install on quit
+  // until the installer is signed (SMAC Finding 6). Unsigned auto-install
+  // across a public GitHub Releases feed is a silent-RCE vector. Instead
+  // the renderer exposes a manual "Install now" action once the update is
+  // ready.
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowDowngrade = false;
   autoUpdater.logger = console;
 
   const relay = (kind, payload = {}) => {
@@ -239,6 +372,15 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    try {
+      logSink = createLogSink(app.getPath('logs'));
+      logSink.install();
+      console.log('[main] log sink ready:', logSink.logPath);
+    } catch (err) {
+      // Sink failure is never fatal — fall back to the unattached console.
+      console.warn('[main] log sink unavailable:', err && err.message ? err.message : err);
+    }
+    migrateSecretsOnBoot();
     registerIpcHandlers();
     let rendererLoaded = false;
     try {

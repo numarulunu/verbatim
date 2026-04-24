@@ -163,6 +163,88 @@ def _load_or_none(person_id: str) -> PersonRecord | None:
         return None
 
 
+def annotate_regions(
+    segments: list[dict],
+    audio: "np.ndarray",
+    sr: int,
+) -> list[dict]:
+    """Phase 3: tag each segment with a `region` from REGION_LABELS using the
+    existing pyworld classifier. The classifier is greenfield — defined in
+    persons/regionizer.py since the Gate 3 build but never wired into the
+    pipeline before now (`matched_region` was scaffolding for this exact use).
+    """
+    from persons.regionizer import classify_segment
+
+    out: list[dict] = []
+    for seg in segments:
+        new_seg = dict(seg)
+        if "region" in new_seg and new_seg["region"]:
+            out.append(new_seg)
+            continue
+        try:
+            start_idx = max(0, int(float(seg["start"]) * sr))
+            end_idx = min(len(audio), int(float(seg["end"]) * sr))
+            window = audio[start_idx:end_idx]
+            new_seg["region"] = str(classify_segment(window, sr))
+        except (KeyError, ValueError, RuntimeError) as exc:
+            log.debug("region classification failed: %s", exc)
+            new_seg["region"] = "speaking"  # safe default
+        out.append(new_seg)
+    return out
+
+
+def split_sung_and_spoken(segments: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Partition segments by region. Sung segments go through sung_handler;
+    spoken segments continue through verification/polish/library update."""
+    sung = [s for s in segments if str(s.get("region", "")).startswith("sung")]
+    spoken = [s for s in segments if not str(s.get("region", "")).startswith("sung")]
+    return spoken, sung
+
+
+def handle_sung_segments(
+    sung: list[dict],
+    audio: "np.ndarray",
+    sr: int,
+    label_to_person: dict[str, PersonRecord],
+) -> list[dict]:
+    """Wrap persons.sung_handler.handle_sung with the voice-library lookup
+    the orchestrator already has. Returns sung segments tagged with
+    text=`[SUNG: ~Xs]`, polished=True, sung=True."""
+    if not sung:
+        return sung
+    from persons.matcher import load_voice_library
+    from persons.sung_handler import handle_sung
+
+    voice_libraries: dict[str, dict] = {}
+    for person in label_to_person.values():
+        if person is None:
+            continue
+        voice_libraries[person.id] = load_voice_library(person)
+    return handle_sung(sung, audio, sr, voice_libraries)
+
+
+def reattribute_spoken_words(
+    spoken: list[dict],
+    audio: "np.ndarray",
+    sr: int,
+    label_to_person: dict[str, PersonRecord],
+) -> list[dict]:
+    """Word-level cosine re-attribution on spoken segments. Catches
+    teacher/student bleed at fast turn boundaries that segment-level
+    diarization misses."""
+    if not spoken:
+        return spoken
+    from persons.matcher import load_voice_library
+    from utils.word_reattribute import reattribute_words
+
+    voice_libraries: dict[str, dict] = {}
+    for person in label_to_person.values():
+        if person is None:
+            continue
+        voice_libraries[person.id] = load_voice_library(person)
+    return reattribute_words(spoken, audio, sr, voice_libraries)
+
+
 # ---------------------------------------------------------------------------
 # Phase 8b — verification pass
 # ---------------------------------------------------------------------------

@@ -294,14 +294,28 @@ def _finalize(
         reporter, file_index, "identification",
         st3.identify_speakers, labeled_segments, cluster_emb, audio, 16000, meta,
     )
+    # Phase 3 (2026-04-24 plan): tag region per segment, branch sung from
+    # spoken, run sung handler + word-level re-attribution before polish. The
+    # sung branch keeps its segments out of verification and polish entirely
+    # — sustained vowels have no phoneme boundaries for either pass to use.
+    # These sub-phases are internal — not surfaced to the renderer's phase
+    # progress, so they call the helpers directly rather than through
+    # _timed_phase_sync (which would require expanding ipc_protocol.PHASE_NAMES).
+    annotated = st3.annotate_regions(identified, audio, 16000)
+    spoken, sung = st3.split_sung_and_spoken(annotated)
+    sung = st3.handle_sung_segments(sung, audio, 16000, label_to_person)
+    spoken = st3.reattribute_spoken_words(spoken, audio, 16000, label_to_person)
     verified = _timed_phase_sync(
         reporter, file_index, "verification",
-        st3.run_verification, identified, cluster_emb, label_to_person, audio, 16000,
+        st3.run_verification, spoken, cluster_emb, label_to_person, audio, 16000,
     )
     polished = _timed_phase_sync(
         reporter, file_index, "polish",
         st3.polish, verified, meta.language,
     )
+    # Re-merge sung segments into the polished list so the corpus + final
+    # transcript carry both. Sort by start time so the file remains chronological.
+    polished = sorted(list(polished) + list(sung), key=lambda s: float(s.get("start", 0.0)))
 
     reporter.phase_started(file_index=file_index, phase="corpus_update",
                            phase_index=_phase_index("corpus_update"))
@@ -484,10 +498,15 @@ def _redo_one(polished_path: Path) -> None:
     identified, label_to_person = st3.identify_speakers(
         segments, cluster_emb, audio, 16000, meta,
     )
+    annotated = st3.annotate_regions(identified, audio, 16000)
+    spoken, sung = st3.split_sung_and_spoken(annotated)
+    sung = st3.handle_sung_segments(sung, audio, 16000, label_to_person)
+    spoken = st3.reattribute_spoken_words(spoken, audio, 16000, label_to_person)
     verified = st3.run_verification(
-        identified, cluster_emb, label_to_person, audio, 16000,
+        spoken, cluster_emb, label_to_person, audio, 16000,
     )
     polished = st3.polish(verified, meta.language)
+    polished = sorted(list(polished) + list(sung), key=lambda s: float(s.get("start", 0.0)))
     st3.update_voice_libraries(polished, label_to_person, audio, 16000, meta, is_redo=True)
 
     transcript["segments"] = polished

@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy — defense-in-depth alongside contextIsolation +
+      sandbox + nodeIntegration:false (see main.js webPreferences).
+      * default-src 'self'                 — everything under the file:// origin
+      * script-src 'self'                  — only the Vite bundle
+      * style-src 'self' 'unsafe-inline' fonts.googleapis.com — Tailwind emits
+                                              inline <style> at build; Google Fonts
+                                              serves CSS from that origin.
+      * font-src fonts.gstatic.com        — the actual .woff2 files
+      * connect-src 'self'                 — blocks all outbound fetch/XHR
+      * img-src 'self' data:               — inline SVGs from lucide + screenshots
+      * frame-src 'none' / object-src 'none' — no iframes, no plugins
+      * base-uri 'self' / form-action 'none' — anti-hijack
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">

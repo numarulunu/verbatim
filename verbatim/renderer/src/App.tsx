@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { TitleBar } from './components/shell/TitleBar';
-import { WorkspaceHeader } from './components/shell/WorkspaceHeader';
 import { QueuePane } from './components/shell/QueuePane';
 import { SettingsRail } from './components/shell/SettingsRail';
 import { BottomActionBar } from './components/shell/BottomActionBar';
@@ -11,21 +10,11 @@ import { Toasts } from './components/Toasts';
 import { UpdateBanner } from './components/UpdateBanner';
 import { verbatimClient } from './bridge/verbatimClient';
 import { useBatchWorkspace } from './hooks/useBatchWorkspace';
-import type { DaemonStatus, ResourceStats, Toast, UpdateStatus } from './types';
+import type { DaemonStatus, Toast, UpdateStatus } from './types';
 
 function shouldShowUpdateBanner(next: UpdateStatus | null) {
   return Boolean(next && next.kind !== 'checking' && next.kind !== 'current');
 }
-
-const DEFAULT_STATS: ResourceStats = {
-  cpu_pct: 6,
-  gpu_pct: 1,
-  gpu_mem_used_gb: 1.4,
-  gpu_mem_total_gb: 24,
-  ram_used_gb: 8.1,
-  ram_total_gb: 32,
-  disk_free_gb: 482,
-};
 
 export default function App() {
   const [status, setStatus] = useState<DaemonStatus>('down');
@@ -36,7 +25,6 @@ export default function App() {
   const [settingsRevision, setSettingsRevision] = useState(0);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [stats, setStats] = useState<ResourceStats>(DEFAULT_STATS);
 
   const pushToast = useCallback((toast: { kind: 'error' | 'warning' | 'info'; title: string; body?: string }) => {
     setToasts((current) => [...current, { ...toast, id: Math.random().toString(36).slice(2) }]);
@@ -77,19 +65,12 @@ export default function App() {
       if (event.type === 'cancel_accepted') {
         pushToast({ kind: 'warning', title: 'Batch cancelled', body: 'Pending files were left untouched.' });
       }
-      if (event.type === 'resource_stats') {
-        setStats({
-          cpu_pct: event.cpu_pct,
-          gpu_pct: event.gpu_pct,
-          gpu_mem_used_gb: event.gpu_mem_used_gb,
-          gpu_mem_total_gb: event.gpu_mem_total_gb,
-          ram_used_gb: event.ram_used_gb,
-          ram_total_gb: event.ram_total_gb,
-          disk_free_gb: event.disk_free_gb,
-        });
-      }
       if (event.type === 'error') {
-        pushToast({ kind: 'error', title: event.title || 'Error', body: event.body });
+        const tail = event.stderr_tail;
+        const body = tail
+          ? `${event.body ?? ''}\n\n— stderr tail —\n${tail.slice(-1000)}`.trimStart()
+          : event.body;
+        pushToast({ kind: 'error', title: event.title || 'Error', body });
       }
       if (event.type === 'warning') {
         pushToast({ kind: 'warning', title: event.title || 'Warning', body: event.body });
@@ -110,19 +91,6 @@ export default function App() {
 
       <TitleBar />
 
-      <WorkspaceHeader
-        inputDir={workspace.inputDir}
-        outputDir={workspace.outputDir}
-        setInputDir={workspace.setInputDir}
-        setOutputDir={workspace.setOutputDir}
-        browseInput={workspace.browseInput}
-        browseOutput={workspace.browseOutput}
-        scan={workspace.scan}
-        refresh={workspace.refresh}
-        openOutput={workspace.openOutput}
-        running={workspace.running}
-      />
-
       <main className='shell-main'>
         <QueuePane workspace={workspace} status={status} />
         <SettingsRail
@@ -142,8 +110,7 @@ export default function App() {
         status={status}
         selectedCount={workspace.selection.size}
         completedCount={workspace.completedCount}
-        elapsed={workspace.elapsed}
-        stats={stats}
+        batchStartedAt={workspace.batchStartedAt}
         onStart={workspace.start}
         onCancel={workspace.cancel}
         onOpenOutput={workspace.openOutput}

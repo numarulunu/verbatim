@@ -31,9 +31,11 @@ from config import (
     GLOSSARY_EN,
     GLOSSARY_RO,
     POLISH_CHUNK_SIZE,
+    POLISH_CHUNK_SIZE_NEW,
     POLISH_ENGINE,
     POLISH_OVERLAP,
     POLISH_SKIP_AVG_LOGPROB,
+    WORD_CONFIDENCE_THRESHOLD,
 )
 
 log = logging.getLogger(__name__)
@@ -64,7 +66,11 @@ def polish_chunks(segments: list[dict], language: str) -> list[dict]:
         return [dict(s, polished=False) for s in segments]
 
     eligible_segments = [segments[i] for i in eligible_idx]
-    chunks = _chunk(eligible_segments, POLISH_CHUNK_SIZE, POLISH_OVERLAP)
+    # Phase 4 (2026-04-24 plan): when POLISH_CHUNK_SIZE_NEW is committed by
+    # Phase 1 calibration, use it. Otherwise fall back to the legacy
+    # POLISH_CHUNK_SIZE so behavior is unchanged pre-calibration.
+    chunk_size = POLISH_CHUNK_SIZE_NEW if POLISH_CHUNK_SIZE_NEW is not None else POLISH_CHUNK_SIZE
+    chunks = _chunk(eligible_segments, chunk_size, POLISH_OVERLAP)
 
     if POLISH_ENGINE == "api":
         polished_chunks = asyncio.run(_polish_chunks_api(chunks, language, glossary))
@@ -94,7 +100,34 @@ def polish_chunks(segments: list[dict], language: str) -> list[dict]:
 
 
 def should_skip(segment: dict) -> bool:
-    """True iff avg_logprob > POLISH_SKIP_AVG_LOGPROB (segment is confident enough)."""
+    """True iff the segment is confident enough to skip polish.
+
+    Phase 4 (2026-04-24 plan) routes to a word-level confidence gate when
+    Phase 1 has committed WORD_CONFIDENCE_THRESHOLD: skip iff EVERY word
+    in the segment scored at or above that threshold. This is a tighter
+    signal than segment-mean avg_logprob, which can mask a single bad word
+    inside an otherwise confident segment.
+
+    Sung segments are routed through persons.sung_handler instead and
+    reach polish only as `[SUNG: ~Xs]` markers; the word-level gate
+    naturally skips them (no `words` field after sung_handler).
+
+    Falls back to the legacy avg_logprob gate when WORD_CONFIDENCE_THRESHOLD
+    is None (Phase 1 not yet calibrated) or the segment lacks a `words`
+    field (e.g., tests that don't ship per-word metadata).
+    """
+    if segment.get("polished") and segment.get("sung"):
+        return True
+
+    if WORD_CONFIDENCE_THRESHOLD is not None:
+        words = segment.get("words")
+        if words:
+            return all(
+                (w.get("probability") or 0.0) >= WORD_CONFIDENCE_THRESHOLD
+                for w in words
+            )
+        # No per-word metadata for this segment — fall through to legacy gate.
+
     logprob = segment.get("avg_logprob")
     if logprob is None:
         return False

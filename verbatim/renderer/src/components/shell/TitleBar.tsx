@@ -1,5 +1,6 @@
 import { Minus, Square, X, AudioLines } from 'lucide-react';
 import { verbatimClient } from '../../bridge/verbatimClient';
+import { APP_VERSION } from '../../appVersion';
 
 function ControlButton({
   label,
@@ -39,7 +40,7 @@ export function TitleBar() {
         </div>
         <div className='shell-titlebar__wordmark'>
           <div className='shell-titlebar__name'>Verbatim</div>
-          <div className='shell-titlebar__meta'>Transcribe</div>
+          <div className='shell-titlebar__meta'>v{APP_VERSION}</div>
         </div>
       </div>
 

@@ -77,3 +77,29 @@ test('publish-win runs prep steps before electron-builder publish', () => {
   assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /renderer:build/);
   assert.match(pkg.scripts.publishWin || pkg.scripts['publish-win'], /electron-builder --win --publish always/);
 });
+
+test('build-win runs the same prep steps as publish-win', () => {
+  // SMAC 2026-04-23 Finding 16: previously `build-win` skipped fetch-ffmpeg
+  // and build-engine, so a fresh `npm run build-win` would package whatever
+  // stale engine/ directory was on disk. The script now chains the prep.
+  const pkg = readPackageJson();
+  const buildWin = pkg.scripts['build-win'];
+  assert.ok(buildWin, 'build-win script should exist');
+  assert.match(buildWin, /fetch-ffmpeg/, 'build-win must run fetch-ffmpeg');
+  assert.match(buildWin, /build-engine/, 'build-win must run build-engine');
+  assert.match(
+    buildWin,
+    /build-win:electron-only|renderer:build/,
+    'build-win must reach the renderer build + electron-builder step',
+  );
+});
+
+test('build-win:electron-only is the bare electron-builder path for fast iteration', () => {
+  const pkg = readPackageJson();
+  const electronOnly = pkg.scripts['build-win:electron-only'];
+  assert.ok(electronOnly, 'build-win:electron-only must exist as the prep-skipping escape hatch');
+  assert.match(electronOnly, /renderer:build/);
+  assert.match(electronOnly, /electron-builder --win/);
+  assert.doesNotMatch(electronOnly, /fetch-ffmpeg/);
+  assert.doesNotMatch(electronOnly, /build-engine/);
+});

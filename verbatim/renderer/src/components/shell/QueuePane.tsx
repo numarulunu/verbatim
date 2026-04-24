@@ -1,39 +1,28 @@
 import type { DaemonStatus } from '../../types';
 import type { BatchWorkspaceController } from '../../hooks/useBatchWorkspace';
 import { FileList } from '../batch/FileList';
-
-function statusLabel(status: DaemonStatus, running: boolean) {
-  if (running) return 'Processing';
-  if (status === 'ready') return 'Ready';
-  if (status === 'spawning') return 'Starting';
-  if (status === 'crashed') return 'Crashed';
-  if (status === 'shutting_down') return 'Stopping';
-  return 'Offline';
-}
+import { WorkspaceHeader } from './WorkspaceHeader';
 
 export function QueuePane({
   workspace,
-  status,
 }: {
   workspace: BatchWorkspaceController;
   status: DaemonStatus;
 }) {
-  const doneCount = Object.values(workspace.progress).filter((item) => item.state === 'success').length;
-  const failedCount = Object.values(workspace.progress).filter((item) => item.state === 'failed').length;
-
   return (
     <section className='shell-queue'>
-      <header className='shell-queue__head'>
-        <div className='shell-queue__head-copy'>
-          <div className='shell-kicker'>Queue</div>
-          <div className='shell-queue__status'>{statusLabel(status, workspace.running)}</div>
-        </div>
-        <div className='shell-queue__head-meta'>
-          <span>{workspace.selection.size} selected</span>
-          <span>{workspace.scanSummary.fresh} fresh</span>
-          <span>{workspace.scanSummary.total} files</span>
-        </div>
-      </header>
+      <WorkspaceHeader
+        inputDir={workspace.inputDir}
+        outputDir={workspace.outputDir}
+        setInputDir={workspace.setInputDir}
+        setOutputDir={workspace.setOutputDir}
+        browseInput={workspace.browseInput}
+        browseOutput={workspace.browseOutput}
+        scan={workspace.scan}
+        refresh={workspace.refresh}
+        openOutput={workspace.openOutput}
+        running={workspace.running}
+      />
 
       <div className='shell-queue__body'>
         <FileList
@@ -47,14 +36,6 @@ export function QueuePane({
           onSort={workspace.setSortKey}
         />
       </div>
-
-      <footer className='shell-queue__footer'>
-        <span><strong>{workspace.scanSummary.total}</strong> total</span>
-        <span><strong>{workspace.scanSummary.fresh}</strong> fresh</span>
-        <span><strong>{workspace.scanSummary.processed}</strong> processed</span>
-        <span><strong>{doneCount}</strong> done</span>
-        <span><strong>{failedCount}</strong> failed</span>
-      </footer>
     </section>
   );
 }

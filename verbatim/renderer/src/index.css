@@ -77,8 +77,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  min-width: 1180px;
-  min-height: 760px;
+  min-width: 960px;
+  min-height: 640px;
   background: transparent;
 }
 
@@ -527,6 +527,73 @@ body {
   gap: 10px;
 }
 
+.shell-impact__heroes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shell-impact__hero {
+  min-width: 0;
+  padding: 4px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.shell-impact__hero-label {
+  font-size: 10px;
+  color: #5a5a5a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shell-impact__hero-main strong {
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #f1f1f1;
+}
+
+.shell-impact__meters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shell-impact__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shell-impact__chip {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.shell-impact__chip-label {
+  font-size: 10px;
+  color: #5a5a5a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.shell-impact__chip-value {
+  font-size: 10px;
+  color: #8f8f8f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-impact__chip-value--accent {
+  color: #f1f1f1;
+}
+
 .shell-card__stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -590,7 +657,7 @@ body {
 .shell-meter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .shell-meter__head {
@@ -613,12 +680,6 @@ body {
   height: 100%;
   border-radius: 999px;
   background: #8c8c8c;
-}
-
-.shell-meter__detail {
-  font-size: 11px;
-  line-height: 1.45;
-  color: #8f8f8f;
 }
 
 .tone-accent {
@@ -650,7 +711,7 @@ body {
 .shell-action {
   position: relative;
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 168px 1fr;
   min-height: 68px;
   background: var(--shell-panel);
 }

@@ -1,5 +1,32 @@
+import { useEffect, useState } from 'react';
 import { ArrowRight, Square } from 'lucide-react';
-import type { DaemonStatus, ResourceStats } from '../../types';
+import type { DaemonStatus } from '../../types';
+
+// elapsed used to live on App state and ticked twice per second, forcing
+// the entire App tree (QueuePane, SettingsRail, the 16-file-table FileList)
+// to rerun on every tick. The interval now lives here so only the footer
+// re-renders (SMAC 2026-04-23 Finding 15).
+//
+// The 1 Hz `resource_stats` event stream was previously wired into App-
+// level state but never rendered — the BottomBar that consumed it was dead
+// code (deleted with this commit). If/when we bring back a resource
+// readout, the subscription belongs here for the same reason.
+
+function useElapsedSeconds(running: boolean, batchStartedAt: number | null): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!running || !batchStartedAt) {
+      setSeconds(0);
+      return;
+    }
+    setSeconds((Date.now() - batchStartedAt) / 1000);
+    const id = window.setInterval(() => {
+      setSeconds((Date.now() - batchStartedAt) / 1000);
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [running, batchStartedAt]);
+  return seconds;
+}
 
 function statusMessage(status: DaemonStatus, running: boolean, selectedCount: number) {
   if (running) return `Processing ${selectedCount} file${selectedCount === 1 ? '' : 's'}.`;
@@ -18,8 +45,7 @@ export function BottomActionBar({
   status,
   selectedCount,
   completedCount,
-  elapsed,
-  stats,
+  batchStartedAt,
   onStart,
   onCancel,
   onOpenOutput,
@@ -28,12 +54,13 @@ export function BottomActionBar({
   status: DaemonStatus;
   selectedCount: number;
   completedCount: number;
-  elapsed: number;
-  stats: ResourceStats;
+  batchStartedAt: number | null;
   onStart: () => Promise<void>;
   onCancel: () => Promise<void>;
   onOpenOutput: () => Promise<void>;
 }) {
+  const elapsed = useElapsedSeconds(running, batchStartedAt);
+
   const disabled = !running && selectedCount === 0;
   const progress = running && selectedCount > 0 ? Math.round((completedCount / selectedCount) * 100) : 0;
 

@@ -1,9 +1,14 @@
-# Verbatim ASR
+# Verbatim
 
-Local-only Python pipeline for transcribing vocal-lesson recordings into a
-named-entity pedagogical research corpus. Every utterance is attributed to
-a real person whose voiceprint, voice type, and session history are stored
-in one coherent database that sharpens with every run.
+Local Electron desktop app + Python ASR pipeline for transcribing vocal-lesson
+recordings into a named-entity pedagogical research corpus. Every utterance is
+attributed to a real person whose voiceprint, voice type, and session history
+are stored in one coherent database that sharpens with every run.
+
+The Electron shell (`verbatim/`) is the user surface. It spawns the Python
+daemon (`engine_daemon.py` in dev, `verbatim-engine.exe` in packaged builds)
+and brokers all interaction over JSON-line IPC. There is no longer a separate
+CLI surface — registry / redo / batch are all driven from the renderer.
 
 ## Hardware target (fixed)
 
@@ -43,20 +48,22 @@ For `POLISH_ENGINE="cli"`: Claude Code CLI must be installed and logged in.
 ## Run
 
 ```bash
-# Register participants first
-python enroll.py register --id ionut    --name "Ionuț"    --default-role teacher --voice-type bass
-python enroll.py register --id madalina --name "Mădălina" --default-role student --voice-type soprano
-
-# Normal run — processes everything in Material/ that isn't already polished
-python run.py
-
-# Redo — reprocess files where the voiceprint DB has matured meaningfully
-python run.py --redo --threshold 3
-python run.py --redo --student madalina --dry-run
-
-# Cleanup intermediate files after outputs are verified
-python cleanup.py
+# Dev mode — launches the Electron shell + spawns the Python daemon
+cd verbatim
+npm install
+npm start
 ```
+
+Participants register from the Registry panel inside the app. Batch
+processing, redo, and corpus inspection all live in the renderer UI.
+
+For headless / scripted runs the daemon path is still callable directly:
+
+```bash
+.venv/Scripts/python.exe engine_daemon.py < commands.jsonl > events.jsonl
+```
+
+The daemon's IPC protocol is documented in `verbatim/ipc-protocol.json`.
 
 ## Filename convention
 
@@ -95,7 +102,12 @@ no cloud, no commits.
 pytest
 ```
 
-## Status
+## Build (Windows installer)
 
-Scaffold stage. Modules stubbed with `NotImplementedError`. Implementation
-lands in Gate 4.
+```bash
+cd verbatim
+npm run build-all-win   # fetch ffmpeg + freeze engine + build installer
+```
+
+Output lands in `verbatim/dist/Verbatim-Transcribe-Setup-X.Y.Z.exe`. See
+`docs/packaging.md` for the full build / publish flow.

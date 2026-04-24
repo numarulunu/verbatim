@@ -40,16 +40,36 @@ nsis:
 
 # The PyInstaller-frozen engine is copied into the installer under
 # resources/engine/ — this preserves the runtime-helpers path resolution.
+# The filter strips dev artifacts that PyInstaller can leave around (cached
+# bytecode, debug symbols, MSVC link products) so they never reach the
+# 2-4 GB installer (SMAC 2026-04-23 Finding 19).
 extraResources:
   - from: engine/
     to: engine/
+    filter:
+      - "**/*"
+      - "!**/__pycache__"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
+      - "!**/*.pyo"
+      - "!**/*.pdb"
+      - "!**/*.lib"
+      - "!**/*.exp"
+      - "!**/*.map"
 
 # Auto-update via GitHub Releases. The installed app checks latest.yml
 # on each startup; if a newer version is published, electron-updater
-# downloads in the background and installs on next app quit.
+# downloads in the background and surfaces an "Install now" banner —
+# install is gated behind an explicit user click until the installer
+# is Authenticode-signed (SMAC 2026-04-23 Finding 6, main.js sets
+# autoInstallOnAppQuit=false and allowDowngrade=false).
 # Requires: a public GitHub repo at numarulunu/verbatim. Each release
 # must carry the Verbatim Setup X.Y.Z.exe + latest.yml assets.
 # Private repos need GH_TOKEN in the publish env.
+# electronUpdaterCompatibility locks out rollback attacks — the installed
+# client refuses to update from a latest.yml published by an older
+# electron-builder. Bump on every electron-builder major upgrade.
+electronUpdaterCompatibility: '>=0.1.7'
 publish:
   provider: github
   owner: numarulunu

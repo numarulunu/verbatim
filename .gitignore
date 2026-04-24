@@ -20,6 +20,7 @@ Transcriptions/
 03_polished/
 _voiceprints/
 _logs/
+_calibration/
 corpus.json
 session_map.json
 
@@ -30,6 +31,8 @@ build/
 
 # --- Electron wrapper ---
 verbatim/node_modules/
+verbatim/renderer/node_modules/
+verbatim/renderer/dist/
 verbatim/dist/
 verbatim/engine/verbatim-engine.exe
 verbatim/engine/_internal/

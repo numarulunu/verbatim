@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('verbatim', {
 
   openPath: (targetPath) => ipcRenderer.invoke('verbatim:open-path', targetPath),
 
+  /** Open the main-process log folder in the OS file browser. */
+  openLogsFolder: () => ipcRenderer.invoke('verbatim:open-logs-folder'),
+
   /** Read the persisted user settings (HF/Anthropic tokens, data dir). */
   getSettings: () => ipcRenderer.invoke('verbatim:get-settings'),
 
@@ -71,4 +74,8 @@ contextBridge.exposeInMainWorld('verbatim', {
     ipcRenderer.on('verbatim:update-status', listener);
     return () => ipcRenderer.removeListener('verbatim:update-status', listener);
   },
+
+  /** Trigger auto-installer after an update has been downloaded. Explicit
+   *  user action: install happens immediately and the app relaunches. */
+  installUpdateNow: () => ipcRenderer.invoke('verbatim:install-update-now'),
 });
