@@ -27,8 +27,9 @@ win:
 
 nsis:
   oneClick: false
-  perMachine: true                      # installs to C:\Program Files\Verbatim Transcribe\ — admin prompt
-  allowToChangeInstallationDirectory: true
+  perMachine: false                      # per-user install to AppData\Local\Programs\verbatim\ — no UAC, no Program Files,
+                                          # no Defender quarantine of unsigned exe during Program Files copy
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Verbatim                 # Desktop + Start Menu shortcut label
