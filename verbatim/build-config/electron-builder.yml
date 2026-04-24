@@ -26,17 +26,16 @@ win:
   # in there whenever the branded one is ready.
 
 nsis:
-  oneClick: false
-  perMachine: false                      # per-user install to AppData\Local\Programs\verbatim\ — no UAC, no Program Files,
-                                          # no Defender quarantine of unsigned exe during Program Files copy
-  allowToChangeInstallationDirectory: false
+  oneClick: true                         # silent install — no wizard, no UAC. The wizard mode (oneClick: false)
+                                          # always elevates upfront regardless of perMachine, which on this machine
+                                          # broke file-copy to C:\Program Files. Matches the install style of Slack,
+                                          # VS Code, Minifier — silent per-user drop into %LOCALAPPDATA%\Programs.
+  perMachine: false                      # per-user install to AppData\Local\Programs\verbatim\
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Verbatim                 # Desktop + Start Menu shortcut label
   uninstallDisplayName: Verbatim         # Add/Remove Programs label
-  runAfterFinish: false                  # don't auto-launch; some AV setups
-                                          # break the launch with "can't find path"
-                                          # which manifests as a broken shortcut
+  runAfterFinish: true                   # silent installs feel broken without auto-launch
   deleteAppDataOnUninstall: false        # preserve user data across reinstalls
 
 # The PyInstaller-frozen engine is copied into the installer under
